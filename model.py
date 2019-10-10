@@ -3,6 +3,7 @@ import NiftiDataset
 import numpy as np
 import datetime
 import networks
+import sys
 
 class MedicalImageClassifier(object):
 	def __init__(self,sess,config):
@@ -69,7 +70,7 @@ class MedicalImageClassifier(object):
 		self.initial_learning_rate = self.config['TrainingSetting']['Optimizer']['InitialLearningRate']
 		self.decay_factor = self.config['TrainingSetting']['Optimizer']['Decay']['Factor']
 		self.decay_step = self.config['TrainingSetting']['Optimizer']['Decay']['Step']
-		# self.spacing = self.config['TrainingSetting']['Spacing']
+		self.spacing = self.config['TrainingSetting']['Spacing']
 
 	def dataset_iterator(self,data_dir,transforms,train=True):
 		# Force input pipepline to CPU:0 to avoid operations sometimes ended up at GPU and resulting a slow down
@@ -130,8 +131,36 @@ class MedicalImageClassifier(object):
 		]
 
 		#  get input and output datasets
-		self.train_iterator = self.dataset_iterator(self.train_data_dir,self.train)
+		self.train_iterator = self.dataset_iterator(self.train_data_dir,self.train_transforms)
 		self.next_element_train = self.train_iterator.get_next()
+
+		if self.testing:
+			self.test_iterator = self.dataset_iterator(self.test_data_dir,self.test_transforms)
+			self.next_element_test = self.test_iterator.get_next()
+
+		# network models
+		if self.network_name == "LeNet":
+			self.network = networks.Lenet3D(
+			num_classes=self.output_channel_num,
+			is_training=True,
+			activation_fn="relu",
+			keep_prob=1.0
+			)
+		else:
+			sys.exit('Invalid Network')
+
+		self.logits_op = self.network.GetNetwork(self.input_placeholder)
+		self.logits_op = tf.reshape(self.logits_op, [-1,self.output_channel_num])
+
+		self.loss_op = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.logits_op,labels=self.output_placeholder))
+
+		self.sigmoid_op = tf.sigmoid(self.logits_op)
+		self.result_op = tf.math.round(self.sigmoid_op)
+
+		acc, self.acc_op = tf.metrics.accuracy(labels=self.output_placeholder, predictions=self.result_op)
+
+		tf.summary.scalar('loss', self.loss_op)
+		tf.summary.scalar('accuracy',self.acc_op)
 
 	def train(self):
 		# read config to class variables
@@ -140,31 +169,41 @@ class MedicalImageClassifier(object):
 		"""Train the classifier"""
 		self.build_model_graph()
 
+		# learning rate
+		with tf.name_scope("learning_rate"):
+			self.learning_rate = tf.train.exponential_decay(self.initial_learning_rate, self.global_step,
+				self.decay_step, self.decay_factor, staircase=False, name="learning_rate")
+		tf.summary.scalar('learning_rate', self.learning_rate)
+
+		# optimizer
+		with tf.name_scope("optimizer"):
+			if self.optimizer_name == "GradientDescent":
+				optimizer = tf.train.GradientDescentOptimizer(learning_rate=self.learning_rate)
+			else:
+				sys.exit('Invalid Optimizer')
+
+			train_op = optimizer.minimize(
+				loss=self.loss_op,
+				global_step=self.global_step
+				)
+
+		if not self.restore_training:
+			# clear log directory
+			shutil.rmtree(args.log_dir)
+			os.makedirs(args.log_dir)
+
+			# clear checkpoint directory
+			shutil.rmtree(args.checkpoint_dir)
+			os.makedirs(args.checkpoint_dir)
+
+		#  saver
+		summary_op = tf.summary.merge_all()
+		train_summary_writer = tf.summary.FileWriter(self.log_dir + '/train', self.sess.graph)
+		if self.testing:
+			test_summary_writer = tf.summary.FileWriter(self.log_dir + '/test', self.sess.graph)
+
 		start_epoch = tf.get_variable("start_epoch", shape=[1], initializer=tf.zeros_initializer, dtype=tf.int32)
 		start_epoch_inc = start_epoch.assign(start_epoch+1)
-
-		# graph
-		network = networks.Lenet3D(
-			num_classes=self.output_channel_num,
-			is_training=True,
-			activation_fn="relu",
-			keep_prob=1.0
-			)
-		logits_op = network.GetNetwork(self.input_placeholder)
-		logits_op = tf.reshape(logits_op, [-1,self.output_channel_num])
-
-		loss_op = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=logits_op,labels=self.output_placeholder))
-
-		sigmoid_op = tf.sigmoid(logits_op)
-		result_op = tf.math.round(sigmoid_op)
-
-		acc, acc_op = tf.metrics.accuracy(labels=self.output_placeholder, predictions=result_op)
-
-		optimizer = tf.train.GradientDescentOptimizer(learning_rate=1e-4)
-		train_op = optimizer.minimize(
-			loss=loss_op,
-			global_step=self.global_step
-			)
 
 		# actual training cycle
 		# Initialize all variables
@@ -184,13 +223,23 @@ class MedicalImageClassifier(object):
 					self.sess.run(tf.initializers.local_variables())
 					images, label = self.sess.run(self.next_element_train)
 
-					sigmoid, loss, result, accuracy, train = self.sess.run([sigmoid_op,loss_op, result_op, acc_op, train_op], feed_dict={self.input_placeholder: images, self.output_placeholder: label})
+					sigmoid, loss, result, accuracy, train = self.sess.run(
+						[self.sigmoid_op,self.loss_op, self.result_op, self.acc_op, train_op], 
+						feed_dict={self.input_placeholder: images, self.output_placeholder: label})
 					print("{}: loss: {}".format(datetime.datetime.now(),loss))
 					print("{}: accuracy: {}".format(datetime.datetime.now(),accuracy))
 					print("{}: ground truth: {}".format(datetime.datetime.now(),label))
 					print("{}: result: {}".format(datetime.datetime.now(),result))
 					print("{}: sigmoid: {}".format(datetime.datetime.now(),sigmoid))
 
+					# perform summary log after training op
+					summary = self.sess.run(summary_op,feed_dict={
+						self.input_placeholder: images,
+						self.output_placeholder: label
+						})
+
+					train_summary_writer.add_summary(summary,global_step=tf.train.global_step(self.sess,self.global_step))
+					train_summary_writer.flush()
 
 				except tf.errors.OutOfRangeError:
 					start_epoch_inc.op.run()
