@@ -2,6 +2,7 @@ import tensorflow as tf
 import NiftiDataset
 import numpy as np
 import datetime
+import networks
 
 class MedicalImageClassifier(object):
 	def __init__(self,sess,config):
@@ -40,7 +41,7 @@ class MedicalImageClassifier(object):
 
 	def read_config(self):
 		self.input_channel_num = len(self.config['TrainingSetting']['Data']['ImageFilenames'])
-		self.output_class_num = len(self.config['TrainingSetting']['Data']['ClassNames'])
+		self.output_channel_num = len(self.config['TrainingSetting']['Data']['ClassNames'])
 
 		self.batch_size = self.config['TrainingSetting']['BatchSize']
 		self.patch_shape = self.config['TrainingSetting']['PatchShape']
@@ -142,6 +143,29 @@ class MedicalImageClassifier(object):
 		start_epoch = tf.get_variable("start_epoch", shape=[1], initializer=tf.zeros_initializer, dtype=tf.int32)
 		start_epoch_inc = start_epoch.assign(start_epoch+1)
 
+		# graph
+		network = networks.Lenet3D(
+			num_classes=self.output_channel_num,
+			is_training=True,
+			activation_fn="relu",
+			keep_prob=1.0
+			)
+		logits_op = network.GetNetwork(self.input_placeholder)
+		logits_op = tf.reshape(logits_op, [-1,self.output_channel_num])
+
+		loss_op = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=logits_op,labels=self.output_placeholder))
+
+		sigmoid_op = tf.sigmoid(logits_op)
+		result_op = tf.math.round(sigmoid_op)
+
+		acc, acc_op = tf.metrics.accuracy(labels=self.output_placeholder, predictions=result_op)
+
+		optimizer = tf.train.GradientDescentOptimizer(learning_rate=1e-4)
+		train_op = optimizer.minimize(
+			loss=loss_op,
+			global_step=self.global_step
+			)
+
 		# actual training cycle
 		# Initialize all variables
 		self.sess.run(tf.initializers.global_variables())
@@ -159,77 +183,15 @@ class MedicalImageClassifier(object):
 				try:
 					self.sess.run(tf.initializers.local_variables())
 					images, label = self.sess.run(self.next_element_train)
-					print(images.shape,label.shape)
+
+					sigmoid, loss, result, accuracy, train = self.sess.run([sigmoid_op,loss_op, result_op, acc_op, train_op], feed_dict={self.input_placeholder: images, self.output_placeholder: label})
+					print("{}: loss: {}".format(datetime.datetime.now(),loss))
+					print("{}: accuracy: {}".format(datetime.datetime.now(),accuracy))
+					print("{}: ground truth: {}".format(datetime.datetime.now(),label))
+					print("{}: result: {}".format(datetime.datetime.now(),result))
+					print("{}: sigmoid: {}".format(datetime.datetime.now(),sigmoid))
+
 
 				except tf.errors.OutOfRangeError:
 					start_epoch_inc.op.run()
 					break
-
-# images = []
-
-	# # load image data
-	# reader = sitk.ImageFileReader()
-	# reader.SetFileName("./data/dataset/training/A01/image_brain_mni.nii.gz")
-	# images.append(reader.Execute())
-	# reader.SetFileName("./data/dataset/training/A03/image_brain_mni.nii.gz")
-	# images.append(reader.Execute())
-
-	# labels = []
-	# labels.append([1,0,0,0])
-	# labels.append([1,1,0,0])
-
-	# # normalize images
-	# sigma = 2.5
-	# for i in range(2):
-	# 	statisticsFilter = sitk.StatisticsImageFilter()
-	# 	statisticsFilter.Execute(images[i])
-
-	# 	intensityWindowingFilter = sitk.IntensityWindowingImageFilter()
-	# 	intensityWindowingFilter.SetOutputMaximum(255)
-	# 	intensityWindowingFilter.SetOutputMinimum(0)
-	# 	intensityWindowingFilter.SetWindowMaximum(statisticsFilter.GetMean()+sigma*statisticsFilter.GetSigma());
-	# 	intensityWindowingFilter.SetWindowMinimum(statisticsFilter.GetMean()-sigma*statisticsFilter.GetSigma());
-
-	# 	images[i] = intensityWindowingFilter.Execute(images[i])
-
-	# images_np = []
-	# for i in range(2):
-	# 	images_np.append(sitk.GetArrayFromImage(images[i]))
-
-	# # graph
-	# network = Lenet3D(
-	# 	num_classes=4,
-	# 	is_training=True,
-	# 	activation_fn="relu",
-	# 	keep_prob=1.0
-	# 	)
-	# logits_op = network.GetNetwork(input_placeholder)
-	# logits_op = tf.reshape(logits_op, [-1,4])
-
-	# loss_op = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=logits_op,labels=output_placeholder))
-
-	# sigmoid_op = tf.sigmoid(logits_op)
-
-
-	# optimizer = tf.train.GradientDescentOptimizer(learning_rate=1e-4)
-	# train_op = optimizer.minimize(
-	# 	loss=loss_op,
-	# 	global_step=global_step
-	# 	)
-
-	# config = tf.ConfigProto()
-	# config.gpu_options.allow_growth = True
-
-	# with tf.Session(config=config) as sess:
-	# 	sess.run(tf.global_variables_initializer())
-	# 	for i in range(9999):
-	# 		for j in range(2):
-	# 			image = images_np[j][np.newaxis,:,:,:,np.newaxis]
-	# 			label = np.asarray(labels[j])
-	# 			print(label)
-	# 			label = label[np.newaxis,:]
-
-	# 			sigmoid, loss, train = sess.run([sigmoid_op,loss_op, train_op], feed_dict={input_placeholder: image, output_placeholder: label})
-	# 			print("step {}: loss: {}".format(i,loss))
-	# 			print("step {}: ground truth: {}".format(i,label))
-	# 			print("step {}: output: {}".format(i,sigmoid))
