@@ -15,14 +15,14 @@
         "BatchSize": 10,
         "PatchShape": [91,109,91],
         "ImageLog": false,
-        "Restore": true,
+        "Restore": false,
         "LogDir": "./tmp/log",
         "CheckpointDir": "./tmp/ckpt",
         "Network": {
             "Name":"LeNet",
             "Dropout":0.0
         },
-        "Testing": false,
+        "Testing": true,
         "Epoches": 9999,
         "Optimizer":{
             "Name": "GradientDescent",

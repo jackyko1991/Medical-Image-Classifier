@@ -4,6 +4,8 @@ import numpy as np
 import datetime
 import networks
 import sys
+import os
+import shutil
 
 class MedicalImageClassifier(object):
 	def __init__(self,sess,config):
@@ -187,21 +189,6 @@ class MedicalImageClassifier(object):
 				global_step=self.global_step
 				)
 
-		if not self.restore_training:
-			# clear log directory
-			shutil.rmtree(args.log_dir)
-			os.makedirs(args.log_dir)
-
-			# clear checkpoint directory
-			shutil.rmtree(args.checkpoint_dir)
-			os.makedirs(args.checkpoint_dir)
-
-		#  saver
-		summary_op = tf.summary.merge_all()
-		train_summary_writer = tf.summary.FileWriter(self.log_dir + '/train', self.sess.graph)
-		if self.testing:
-			test_summary_writer = tf.summary.FileWriter(self.log_dir + '/test', self.sess.graph)
-
 		start_epoch = tf.get_variable("start_epoch", shape=[1], initializer=tf.zeros_initializer, dtype=tf.int32)
 		start_epoch_inc = start_epoch.assign(start_epoch+1)
 
@@ -210,9 +197,39 @@ class MedicalImageClassifier(object):
 		self.sess.run(tf.initializers.global_variables())
 		print("{}: Start training...".format(datetime.datetime.now()))
 
+		if not self.restore_training:
+			# clear log directory
+			if os.path.exists(self.log_dir):
+				shutil.rmtree(self.log_dir)
+			os.makedirs(self.log_dir)
+
+			# clear checkpoint directory
+			if os.path.exists(self.ckpt_dir):
+				shutil.rmtree(self.ckpt_dir)
+			os.makedirs(self.ckpt_dir)
+		else:
+			# check if checkpoint exists
+			if os.path.exists(checkpoint_prefix+"-latest"):
+				print("{}: Last checkpoint found at {}, loading...".format(datetime.datetime.now(),self.ckpt_dir))
+				latest_checkpoint_path = tf.train.latest_checkpoint(self.ckpt_dir,latest_filename="checkpoint-latest")
+				saver.restore(self.sess, latest_checkpoint_path)
+			
+			print("{}: Last checkpoint epoch: {}".format(datetime.datetime.now(),start_epoch.eval(session=self.sess)[0]))
+			print("{}: Last checkpoint global step: {}".format(datetime.datetime.now(),tf.train.global_step(self.sess, self.global_step)))
+
+		#  saver
+		print("{}: Setting up Saver...".format(datetime.datetime.now()))
+		saver = tf.train.Saver(keep_checkpoint_every_n_hours=5)
+		checkpoint_prefix = os.path.join(self.ckpt_dir,"checkpoint")
+
+		summary_op = tf.summary.merge_all()
+		train_summary_writer = tf.summary.FileWriter(self.log_dir + '/train', self.sess.graph)
+		if self.testing:
+			test_summary_writer = tf.summary.FileWriter(self.log_dir + '/test', self.sess.graph)
+
 		# loop over epochs
 		for epoch in np.arange(start_epoch.eval(session=self.sess),self.epoches):
-			print("{}: Epoch {} starts...".format(datetime.datetime.now(),epoch))
+			print("{}: Epoch {} starts...".format(datetime.datetime.now(),epoch+1))
 
 			# initialize iterator in each new epoch
 			self.sess.run(self.train_iterator.initializer)
@@ -243,4 +260,50 @@ class MedicalImageClassifier(object):
 
 				except tf.errors.OutOfRangeError:
 					start_epoch_inc.op.run()
+					self.network.is_training = False
+
+					print("{}: Saving checkpoint of epoch {} at {}...".format(datetime.datetime.now(),epoch+1,self.ckpt_dir))
+					if not (os.path.exists(self.ckpt_dir)):
+						os.makedirs(self.ckpt_dir,exist_ok=True)
+					saver.save(self.sess, checkpoint_prefix, 
+						global_step=tf.train.global_step(self.sess, self.global_step),
+						latest_filename="checkpoint-latest")
+					print("{}: Saving checkpoint succeed".format(datetime.datetime.now()))
+
 					break
+
+			# testing phase
+			if self.testing:
+				print("{}: Training of epoch {} finishes, testing start".format(datetime.datetime.now(),epoch+1))
+				self.sess.run(self.test_iterator.initializer)
+				while True:
+					try:
+						self.sess.run(tf.local_variables_initializer())
+						images, label = self.sess.run(self.next_element_test)
+						
+						self.network.is_training = False;
+						sigmoid, loss, result, accuracy, train = self.sess.run(
+							[self.sigmoid_op,self.loss_op, self.result_op, self.acc_op, train_op], 
+							feed_dict={self.input_placeholder: images, self.output_placeholder: label})
+						print("{}: loss: {}".format(datetime.datetime.now(),loss))
+						print("{}: accuracy: {}".format(datetime.datetime.now(),accuracy))
+						print("{}: ground truth: {}".format(datetime.datetime.now(),label))
+						print("{}: result: {}".format(datetime.datetime.now(),result))
+						print("{}: sigmoid: {}".format(datetime.datetime.now(),sigmoid))
+
+						# perform summary log after testing op
+						summary = self.sess.run(summary_op,feed_dict={
+							self.input_placeholder: images,
+							self.output_placeholder: label
+							})
+
+						test_summary_writer.add_summary(summary, global_step=tf.train.global_step(self.sess, self.global_step))
+						test_summary_writer.flush()
+
+					except tf.errors.OutOfRangeError:
+						break
+
+		# close tensorboard summary writer
+		train_summary_writer.close()
+		if FLAGS.testing:
+			test_summary_writer.close()
