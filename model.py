@@ -215,7 +215,7 @@ class MedicalImageClassifier(object):
 		else:
 			saver = tf.train.Saver(keep_checkpoint_every_n_hours=5)
 			checkpoint_prefix = os.path.join(self.ckpt_dir,"checkpoint")
-			
+
 			# check if checkpoint exists
 			if os.path.exists(checkpoint_prefix+"-latest"):
 				print("{}: Last checkpoint found at {}, loading...".format(datetime.datetime.now(),self.ckpt_dir))
@@ -244,6 +244,16 @@ class MedicalImageClassifier(object):
 				try:
 					self.sess.run(tf.initializers.local_variables())
 					images, label = self.sess.run(self.next_element_train)
+					if images.shape[0] < self.batch_size:
+						if self.dimension == 2:
+							images_zero_pads = np.zeros((self.batch_size-images.shape[0],images.shape[1],images.shape[2],images.shape[3]))
+							label_zero_pads = np.zeros((self.batch_size-label.shape[0],images.shape[1]))
+						else:
+							images_zero_pads = np.zeros((self.batch_size-images.shape[0],images.shape[1],images.shape[2],images.shape[3],images.shape[4]))
+						
+						label_zero_pads = np.zeros((self.batch_size-label.shape[0],label.shape[1]))
+						images = np.concatenate((images,images_zero_pads))
+						label = np.concatenate((label,label_zero_pads))
 
 					sigmoid, loss, result, accuracy, train = self.sess.run(
 						[self.sigmoid_op,self.loss_op, self.result_op, self.acc_op, train_op], 
@@ -285,6 +295,16 @@ class MedicalImageClassifier(object):
 					try:
 						self.sess.run(tf.local_variables_initializer())
 						images, label = self.sess.run(self.next_element_test)
+						if images.shape[0] < self.batch_size:
+							if self.dimension == 2:
+								images_zero_pads = np.zeros((self.batch_size-images.shape[0],images.shape[1],images.shape[2],images.shape[3]))
+								label_zero_pads = np.zeros((self.batch_size-label.shape[0],images.shape[1]))
+							else:
+								images_zero_pads = np.zeros((self.batch_size-images.shape[0],images.shape[1],images.shape[2],images.shape[3],images.shape[4]))
+							
+							label_zero_pads = np.zeros((self.batch_size-label.shape[0],label.shape[1]))
+							images = np.concatenate((images,images_zero_pads))
+							label = np.concatenate((label,label_zero_pads))
 						
 						self.network.is_training = False;
 						sigmoid, loss, result, accuracy, train = self.sess.run(

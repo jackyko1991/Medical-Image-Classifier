@@ -14,7 +14,7 @@
         },
         "BatchSize": 10,
         "PatchShape": [91,109,91],
-        "ImageLog": false,
+        "ImageLog": true,
         "Restore": true,
         "LogDir": "./tmp/log",
         "CheckpointDir": "./tmp/ckpt",
