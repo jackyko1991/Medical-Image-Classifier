@@ -127,15 +127,15 @@ class NiftiDataset3D(object):
 		# get the associate label
 		label = self.label_df.loc[self.label_df['Case no.']==case].iloc[0].values.tolist()[1:]
 		
-		sample = {'images':images, 'label':label}
+		sample = {'images':images}
 
-		# if self.transforms:
-		# 	for transform in self.transforms:
-		# 		try:
-		# 			sample = transform(sample)
-		# 		except:
-		# 			print("Dataset preprocessing error: {}".format(os.path.dirname(source_paths[0])))
-		# 			exit()
+		if self.transforms:
+			for transform in self.transforms:
+				try:
+					sample = transform(sample)
+				except:
+					print("Dataset preprocessing error: {}".format(case))
+					exit()
 
 		# convert sample to tf tensors
 		for channel in range(len(sample['images'])):
@@ -159,7 +159,7 @@ class Normalization(object):
 		self.name = 'Normalization'
 
 	def __call__(self, sample):
-		sources, targets = sample['sources'], sample['targets']
+		images = sample['images']
 		# normalizeFilter = sitk.NormalizeImageFilter()
 		# image, label = sample['image'], sample['label']
 		# image = normalizeFilter.Execute(image)
@@ -167,13 +167,10 @@ class Normalization(object):
 		resacleFilter.SetOutputMaximum(255)
 		resacleFilter.SetOutputMinimum(0)
 
-		for channel in range(len(sources)):
-			sources[channel] = resacleFilter.Execute(sources[channel])
+		for channel in range(len(images)):
+			images[channel] = resacleFilter.Execute(images[channel])
 
-		for channel in range(len(targets)):
-			targets[channel] = resacleFilter.Execute(targets[channel])
-
-		return {'sources': sources, 'targets': targets}
+		return {'images': images}
 
 # class RandomFlip(object):
 # 	"""
@@ -528,12 +525,12 @@ class RandomNoise(object):
 		self.noiseFilter.SetStandardDeviation(0.1)
 
 		# print("Normalizing image...")
-		sources, targets = sample['sources'], sample['targets']
+		images = sample['images']
 
-		for image_channel in range(len(sources)):
-			sources[image_channel] = self.noiseFilter.Execute(sources[image_channel])		
+		for image_channel in range(len(images)):
+			images[image_channel] = self.noiseFilter.Execute(images[image_channel])		
 
-		return {'sources': sources, 'targets': targets}
+		return {'images': images}
 
 # class ConfidenceCrop(object):
 # 	"""

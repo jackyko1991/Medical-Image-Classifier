@@ -69,8 +69,10 @@ In the default `config.json`, the data folder structure is as following:
 │       │   |   └── image_brain_mni.nii
 │       │   ├── ...
 │       ├── evaluation                  # Put all evaluation data here
-│       │   ├── image1.nii.gz           # The image name are arbitrary
-│       │   ├──	image2.nii.gz
+│       │   ├── case1                   # follow the same folder structure as the training one
+│       │   |   └── image_brain_mni.nii
+│       │   ├── case2
+│       │   |   └── image_brain_mni.nii
 │       │   ├──	...
 │       └── labels.csv                  # CSV file stores all labels for training and testing
 ├── tmp

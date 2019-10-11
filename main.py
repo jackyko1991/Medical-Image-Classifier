@@ -20,9 +20,9 @@ def get_parser():
 		'-p','--phase', 
 		dest='phase', 
 		help='Training phase (default=TRAIN)',
-		choices=['TRAIN','INFERENCE'],
+		choices=['TRAIN','PREDICT'],
 		default='TRAIN',
-		metavar='[TRAIN INFERENCE]')
+		metavar='[TRAIN PREDICT]')
 	parser.add_argument(
 		'--config_json',
 		dest='config_json',
@@ -66,7 +66,7 @@ def main(args):
 		if args.phase == "TRAIN":
 			model.train()
 		else:
-			model.inference() 
+			model.predict() 
 
 if __name__=="__main__":
 	args = get_parser()

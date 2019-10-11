@@ -34,6 +34,15 @@
             }
         },
         "Spacing": [0.25,0.25,0.25]
+    },
+    "PredictionSetting":{
+        "Data":{
+            "EvaluationDataDirectory":"./data/dataset/evaluate",
+            "ImageFilenames": ["image_brain_mni.nii"],
+            "OutputFilename":"./data/dataset/prediction.csv"
+        },
+        "ModelPath": "./tmp/ckpt/checkpoint-00001.meta",
+        "CheckPointPath": "./tmp/ckpt/checkpoint-00001"
     }
 }
 

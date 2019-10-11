@@ -74,6 +74,10 @@ class MedicalImageClassifier(object):
 		self.decay_step = self.config['TrainingSetting']['Optimizer']['Decay']['Step']
 		self.spacing = self.config['TrainingSetting']['Spacing']
 
+		self.model_path = self.config['PredictionSetting']['ModelPath']
+		self.checkpoint_path = self.config['PredictionSetting']['CheckPointPath']
+		self.evaluation_data_dir = self.config['PredictionSetting']['Data']['EvaluationDataDirectory']
+
 	def dataset_iterator(self,data_dir,transforms,train=True):
 		# Force input pipepline to CPU:0 to avoid operations sometimes ended up at GPU and resulting a slow down
 		with tf.device('/cpu:0'):
@@ -241,8 +245,6 @@ class MedicalImageClassifier(object):
 			print("{}: Last checkpoint epoch: {}".format(datetime.datetime.now(),start_epoch.eval(session=self.sess)[0]))
 			print("{}: Last checkpoint global step: {}".format(datetime.datetime.now(),tf.train.global_step(self.sess, self.global_step)))
 
-
-		
 		summary_op = tf.summary.merge_all()
 		train_summary_writer = tf.summary.FileWriter(self.log_dir + '/train', self.sess.graph)
 		if self.testing:
@@ -348,3 +350,81 @@ class MedicalImageClassifier(object):
 		train_summary_writer.close()
 		if FLAGS.testing:
 			test_summary_writer.close()
+
+	def predict(self):
+		sys.exit("Developing...")
+
+		# read config to class variables
+		self.read_config()
+
+		# restore model grpah
+		tf.reset_default_graph()
+		imported_meta = tf.train.import_meta_graph(self.model_path)
+
+		# create transformation to image
+		transforms = [
+			NiftiDataset.Normalization()
+		]
+
+		print("{}: Start evaluation...".format(datetime.datetime.now()))
+
+		imported_meta.restore(self.sess, self.checkpoint_path)
+		print("{}: Restore checkpoint success".format(datetime.datetime.now()))
+
+		for case in os.listdir(self.evaluation_data_dir):
+			# check image data exists
+			image_paths = []
+			image_file_exists = True
+			for image_channel in range(self.input_channel_num):
+				image_paths.append(os.path.join(self.evaluation_data_dir,case,json_config['PredictionSetting']['Data']['ImageFilenames'][image_channel]))
+
+				if not os.path.exists(image_paths[image_channel]):
+					image_file_exists = False
+					break
+
+			if not image_file_exists:
+				print("{}: Image file not found at {}".format(datetime.datetime.now(),os.path.dirname(image_paths[0])))
+				break
+
+			print("{}: Evaluating image at {}".format(datetime.datetime.now(),os.path.dirname(image_paths[0])))
+
+			# read image file
+			images = []
+			images_tfm = []
+
+			for image_channel in range(self.input_channel_num):
+				reader = sitk.ImageFileReader()
+				reader.SetFileName(image_paths[image_channel])
+				image = reader.Execute()
+				images.append(image)
+				# preprocess the image and label before inference
+				images_tfm.append(image)
+
+			sample = {'images':images_tfm}
+
+			# for transform in transforms:
+			# 	sample = transform(sample)
+
+			images_tfm = sample['images']
+
+			# convert image to numpy array
+			for image_channel in range(self.input_channel_num):
+				image_ = sitk.GetArrayFromImage(images_tfm[image_channel])
+				image_ = np.asarray(image_,np.float32)
+				# to unify matrix dimension order between SimpleITK([x,y,z]) and numpy([z,y,x])
+				image_ = np.transpose(image_,(2,1,0))
+				if image_ == 0:
+					images_np = image_[:,:,:,np.newaxis]
+				else:
+					images_np = np.append(images_np, image_[:,:,:,np.newaxis], axis=-1)
+
+			images_np = images_np[np.newaxis,:,:,:,:]
+
+			print(images_np.shape)
+
+			sigmoid = sess.run(['Sigmoid:0'], feed_dict={
+						'Placeholder:0': images_np})
+
+			print("{}: Evaluation of {} complete:".format(datetime.datetime.now(), case))
+			for i in range(self.class_names):
+				print("{}: {}%".format(self.class_names[i],sigmoid[i]))
