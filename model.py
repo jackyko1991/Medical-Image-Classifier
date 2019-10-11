@@ -197,6 +197,9 @@ class MedicalImageClassifier(object):
 		self.sess.run(tf.initializers.global_variables())
 		print("{}: Start training...".format(datetime.datetime.now()))
 
+		#  saver
+		print("{}: Setting up Saver...".format(datetime.datetime.now()))
+
 		if not self.restore_training:
 			# clear log directory
 			if os.path.exists(self.log_dir):
@@ -207,7 +210,12 @@ class MedicalImageClassifier(object):
 			if os.path.exists(self.ckpt_dir):
 				shutil.rmtree(self.ckpt_dir)
 			os.makedirs(self.ckpt_dir)
+			saver = tf.train.Saver(keep_checkpoint_every_n_hours=5)
+			checkpoint_prefix = os.path.join(self.ckpt_dir,"checkpoint")
 		else:
+			saver = tf.train.Saver(keep_checkpoint_every_n_hours=5)
+			checkpoint_prefix = os.path.join(self.ckpt_dir,"checkpoint")
+			
 			# check if checkpoint exists
 			if os.path.exists(checkpoint_prefix+"-latest"):
 				print("{}: Last checkpoint found at {}, loading...".format(datetime.datetime.now(),self.ckpt_dir))
@@ -217,11 +225,8 @@ class MedicalImageClassifier(object):
 			print("{}: Last checkpoint epoch: {}".format(datetime.datetime.now(),start_epoch.eval(session=self.sess)[0]))
 			print("{}: Last checkpoint global step: {}".format(datetime.datetime.now(),tf.train.global_step(self.sess, self.global_step)))
 
-		#  saver
-		print("{}: Setting up Saver...".format(datetime.datetime.now()))
-		saver = tf.train.Saver(keep_checkpoint_every_n_hours=5)
-		checkpoint_prefix = os.path.join(self.ckpt_dir,"checkpoint")
 
+		
 		summary_op = tf.summary.merge_all()
 		train_summary_writer = tf.summary.FileWriter(self.log_dir + '/train', self.sess.graph)
 		if self.testing:
