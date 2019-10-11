@@ -1,10 +1,25 @@
 # Medical-Image-Classifier
 Neural network classifier for medical image using Tensorflow
 
+## Content
+1. [Introduction](#introduction)
+2. [Features]
+3. [Networks]
+4. [Usage]
+	1. Required Libraries
+	2. Software Configuration
+	3. Example usage
+		1. Folder Hierarchy
+		2. Data preprocessing
+		3. Training
+		4. Evaluate
+5. References
+6. Authors
+
 ## Introduction
 This is a Tensorflow implementation for medical image classification tasks. The repository integrates a pre-processing pipeline optimized for 3D imaging data that suitable for multiple images input with multi-class output. The original application of this framework is to detect intracranial hemorrhage types with 3D CT images, however with slightly modification the framework is general applicable for all medical image classification tasks.
 
-### Features
+## Features
 - 3D data processing ready
 - Augumented patching technique, requires less image input for training
 - Multichannel input and multiclass output
@@ -12,7 +27,7 @@ This is a Tensorflow implementation for medical image classification tasks. The 
 - Medical image pre-post processing with SimpleITK filters
 - Easy network replacement structure
 
-### Networks
+## Networks
 Currently the classifier provides following classification networks:
 - LeNet
 
@@ -76,5 +91,5 @@ An example dataset folder is provided in [./data/example](./data/example).
 
 ## References
 
-## Author
+## Authors
 Jacky Ko [jackkykokoko@gmail.com](mailto:jackkykokoko@gmail.com)
