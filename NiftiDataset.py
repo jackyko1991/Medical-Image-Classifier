@@ -125,7 +125,8 @@ class NiftiDataset3D(object):
 				exit()
 
 		# get the associate label
-		label = self.label_df.loc[self.label_df['Case no.']==case].iloc[0].values.tolist()[1:]
+		# need to modify to access data by header
+		label = self.label_df.loc[self.label_df['Case no.']==case].iloc[0].values.tolist()[1:5]
 		
 		sample = {'images':images}
 
