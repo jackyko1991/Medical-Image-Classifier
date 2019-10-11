@@ -86,12 +86,26 @@ An example dataset folder is provided in [./data/example](./data/example).
 #### Data preprocessing
 The framework provides 3D image preprocessing pipeline for end-to-end training. You may modify `self.train_transforms` with SimpleITK backed classes in `NiftiDataset.py`.
 
-The example cases are used to classify intracranial hemorrhage types. To provide a normalized spacing and orientation for all data from different CT machines, the data are registered to [MNI-spacing](https://www.lead-dbs.org/about-the-mni-spaces/) as one of the standard neurological coordinate system. Here we provide MNI templates in [./data/atlas](./data/atlas) for gantry tile correction and coordinate system normalization. Cerebral tissues are pre-extracted for a faster training time. The pre-processing procedures are completed by FSL(https://fsl.fmrib.ox.ac.uk/fsl/fslwiki).
+The example cases are used to classify intracranial hemorrhage types. To provide a normalized spacing and orientation for all data from different CT machines, the data are registered to [MNI-spacing](https://www.lead-dbs.org/about-the-mni-spaces/) as one of the standard neurological coordinate system. Here we provide MNI templates in [./data/atlas](./data/atlas) for gantry tile correction and coordinate system normalization. Cerebral tissues are pre-extracted for a faster training time. The pre-processing procedures are completed by [FSL](https://fsl.fmrib.ox.ac.uk/fsl/fslwiki).
 
 #### GPU selection
 By default the software use the 0th GPU in the system. Use argument option `--gpu 1` to perform on GPU 1.
 
 #### Training
+1. Put all the data in accordance to [Folder Hierarchy](#folder-hierarchy)
+2. Run the command:
+	```bash
+	python main.py -p TRAIN --gpu 0
+	```
+3. Open Tensorboard:
+	```bash
+	tensorboard --logdir="./tmp/log"
+	```
+
+Note:
+- If you want to resume training from previous checkpoint, set `"Restore": true` in `config.json`.
+- By default all the input images are in MNI space with size (91x109x91), voxel size = (2x2x2)mm^3.
+- Change batch size to optimize the training according to your GPU memory. You may check GPU memory usage with `nvidia-smi`
 
 #### Evaluate
 
