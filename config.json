@@ -19,7 +19,7 @@
         "LogDir": "./tmp/log",
         "CheckpointDir": "./tmp/ckpt",
         "Network": {
-            "Name":"LeNet",
+            "Name":"AlexNet",
             "Dropout":0.0
         },
         "Testing": true,

@@ -325,8 +325,8 @@ class MedicalImageClassifier(object):
 							label = np.concatenate((label,label_zero_pads))
 						
 						self.network.is_training = False;
-						sigmoid, loss, result, accuracy, train = self.sess.run(
-							[self.sigmoid_op,self.loss_op, self.result_op, self.acc_op, train_op], 
+						sigmoid, loss, result, accuracy = self.sess.run(
+							[self.sigmoid_op,self.loss_op, self.result_op, self.acc_op], 
 							feed_dict={self.input_placeholder: images, self.output_placeholder: label})
 						print("{}: loss: {}".format(datetime.datetime.now(),loss))
 						print("{}: accuracy: {}".format(datetime.datetime.now(),accuracy))
