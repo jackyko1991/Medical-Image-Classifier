@@ -37,30 +37,29 @@ All training, testing and evaluation data should put in the directory that speci
 
 In the default `config.json`, the data folder structure is as following:
 ```
-.									# Repository root
+.										# Repository root
 ├── ...
 ├── data                      
-│  	└── dataset						# Data directory
-│   	├── training 				# Put all training data here
-|   	├── case1            
-|   	|   └── image_brain_mni.nii # The image name is specified in config.json
-|       ├── case2
-│		|   └── image_brain_mni.nii
-|   	├──	...
-│   ├── training              # Put all training data here
-|   |   ├── case1             # foldername for the cases is arbitary
-|   |   |   ├── img.nii.gz    # Image for training
-|   |   |   └── label.nii.gz  # Corresponding label for training
-|   |   ├── case2
-|   |   ├──...
-│   └── evaluation            # Put all evaluation data here
-|   |   ├── case1             # foldername for the cases is arbitary
-|   |   |   └── img.nii.gz    # Image for evaluation
-|   |   ├── case2
-|   |   ├──...
+│  	└── dataset							# Data directory
+│   	├── training 					# Put all training data here
+│		|   ├── case1            		# foldername for the cases is arbitrary
+│		|   |   └── image_brain_mni.nii # The image name is specified in config.json
+│		|   ├── case2
+│		│	|   └── image_brain_mni.nii
+|		|   ├──	...
+|		├── testing              		# Put all testing data here
+|		|   ├── case1            		# follow the same folder structure as the training one
+|   	|   |	└── image_brain_mni.nii
+|   	|   ├── case2
+|		|	|	└── image_brain_mni.nii
+|		|	├── ...
+|   	└──	evaluation					# Put all evaluation data here
+│   		├── image1.nii.gz           # The image name are arbitrary
+|			├──	image2.nii.gz
+|			├──	...
 ├── tmp
-|   ├── cktp                  # Tensorflow checkpoints
-|   └── log                   # Tensorboard logging folder
+|   ├── cktp                  			# Tensorflow checkpoints
+|   └── log                   			# Tensorboard logging folder
 ├── ...
 ```
 
