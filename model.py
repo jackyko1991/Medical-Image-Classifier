@@ -148,6 +148,22 @@ class MedicalImageClassifier(object):
 			activation_fn="relu",
 			keep_prob=1.0
 			)
+		elif self.network_name == "AlexNet":
+			self.network = networks.AlexNet3D(
+				num_classes=self.output_channel_num,
+				is_training=True,
+				activation_fn="relu",
+				keep_prob=1.0)
+		elif self.network_name == "ResNet":
+			self.network = networks.Resnet3D(
+				num_classes=self.output_channel_num,
+				num_channels=64,
+				is_training=True,
+				activation_fn="relu",
+				keep_prob=1.0,
+				init_conv_shape=7,
+				init_pool=True,
+				module_config=[3,3,5,2])
 		else:
 			sys.exit('Invalid Network')
 
