@@ -154,7 +154,7 @@ class MedicalImageClassifier(object):
 			keep_prob=1.0
 			)
 		elif self.network_name == "AlexNet":
-			self.network = networks.AlexNet3D(
+			self.network = networks.Alexnet3D(
 				num_classes=self.output_channel_num,
 				is_training=True,
 				activation_fn="relu",
@@ -279,9 +279,9 @@ class MedicalImageClassifier(object):
 						feed_dict={self.input_placeholder: images, self.output_placeholder: label})
 					print("{}: loss: {}".format(datetime.datetime.now(),loss))
 					print("{}: accuracy: {}".format(datetime.datetime.now(),accuracy))
-					print("{}: ground truth: {}".format(datetime.datetime.now(),label))
-					print("{}: result: {}".format(datetime.datetime.now(),result))
-					print("{}: sigmoid: {}".format(datetime.datetime.now(),sigmoid))
+					# print("{}: ground truth: {}".format(datetime.datetime.now(),label))
+					# print("{}: result: {}".format(datetime.datetime.now(),result))
+					# print("{}: sigmoid: {}".format(datetime.datetime.now(),sigmoid))
 
 					# perform summary log after training op
 					summary = self.sess.run(summary_op,feed_dict={
@@ -331,9 +331,9 @@ class MedicalImageClassifier(object):
 							feed_dict={self.input_placeholder: images, self.output_placeholder: label})
 						print("{}: loss: {}".format(datetime.datetime.now(),loss))
 						print("{}: accuracy: {}".format(datetime.datetime.now(),accuracy))
-						print("{}: ground truth: {}".format(datetime.datetime.now(),label))
-						print("{}: result: {}".format(datetime.datetime.now(),result))
-						print("{}: sigmoid: {}".format(datetime.datetime.now(),sigmoid))
+						# print("{}: ground truth: {}".format(datetime.datetime.now(),label))
+						# print("{}: result: {}".format(datetime.datetime.now(),result))
+						# print("{}: sigmoid: {}".format(datetime.datetime.now(),sigmoid))
 
 						# perform summary log after testing op
 						summary = self.sess.run(summary_op,feed_dict={

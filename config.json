@@ -12,21 +12,21 @@
             "LabelFilename":"./data/dataset/labels.csv",
             "ClassNames":["IPH","SAH","SDH/EDH","IVH"]
         },
-        "BatchSize": 10,
+        "BatchSize": 1,
         "PatchShape": [91,109,91],
         "ImageLog": false,
         "Restore": true,
         "LogDir": "./tmp/log",
         "CheckpointDir": "./tmp/ckpt",
         "Network": {
-            "Name":"LeNet",
+            "Name":"ResNet",
             "Dropout":0.0
         },
         "Testing": true,
         "Epoches": 9999,
         "Optimizer":{
             "Name": "GradientDescent",
-            "InitialLearningRate": 1e-2,
+            "InitialLearningRate": 1e-3,
             "Momentum":0.9,
             "Decay":{
                 "Factor": 0.01,
