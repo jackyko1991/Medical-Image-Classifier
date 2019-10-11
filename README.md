@@ -30,9 +30,9 @@ This is a Tensorflow implementation for medical image classification tasks. The 
 ## Networks
 Currently the classifier provides following classification networks:
 - LeNet
+- AlexNet
 
 Following networks are to be developed:
-- AlexNet
 - VGG
 - ResNet
 

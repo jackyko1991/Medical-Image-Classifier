@@ -19,14 +19,14 @@
         "LogDir": "./tmp/log",
         "CheckpointDir": "./tmp/ckpt",
         "Network": {
-            "Name":"AlexNet",
+            "Name":"LeNet",
             "Dropout":0.0
         },
         "Testing": true,
         "Epoches": 9999,
         "Optimizer":{
             "Name": "GradientDescent",
-            "InitialLearningRate": 1e-4,
+            "InitialLearningRate": 1e-2,
             "Momentum":0.9,
             "Decay":{
                 "Factor": 0.01,

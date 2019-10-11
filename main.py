@@ -51,7 +51,8 @@ def get_parser():
 
 def main(args):
 	# select gpu
-	os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu) # e.g. "0,1,2", "0,2" 
+	os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+	# os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu) # e.g. "0,1,2", "0,2" 
 
 	# read configuration file
 	with open(args.config_json) as config_json:
@@ -60,6 +61,7 @@ def main(args):
 	# session config
 	config_proto = tf.ConfigProto()
 	config_proto.gpu_options.allow_growth = True
+	config_proto.log_device_placement = True
 
 	with tf.Session(config=config_proto) as sess:
 		model = MedicalImageClassifier(sess,config)

@@ -145,6 +145,7 @@ class MedicalImageClassifier(object):
 			self.next_element_test = self.test_iterator.get_next()
 
 		# network models
+		print("{}: Network: {}".format(datetime.datetime.now(),self.network_name))
 		if self.network_name == "LeNet":
 			self.network = networks.Lenet3D(
 			num_classes=self.output_channel_num,
