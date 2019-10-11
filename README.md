@@ -32,7 +32,7 @@ Known good dependencies:
 All necessary network configurations are stored in `config.json` except for GPU specification. Modify the `config.json` file to fit your application.
 
 ### Example usage
-### Folder Hierarchy
+#### Folder Hierarchy
 All training, testing and evaluation data should put in the directory that specified in `config.json`. Note that you should also provide the class labels in CSV format file.
 
 In the default `config.json`, the data folder structure is as following:
@@ -42,26 +42,31 @@ In the default `config.json`, the data folder structure is as following:
 ├── data                      
 │   └── example							# Data directory
 │       ├── training 					# Put all training data here
-│       |   ├── case1            		# foldername for the cases is arbitrary
-│       |   |   └── image_brain_mni.nii # The image name is specified in config.json
-│       |   ├── case2
+│       │   ├── case1            		# foldername for the cases is arbitrary
+│       │   |   └── image_brain_mni.nii # The image name is specified in config.json
+│       │   ├── case2
 │       │   |   └── image_brain_mni.nii
-|       |   ├──	...
-|       ├── testing              		# Put all testing data here
-|       |   ├── case1            		# follow the same folder structure as the training one
-|       |   |   └── image_brain_mni.nii
-|       |   ├── case2
-|       |   |   └── image_brain_mni.nii
-|       |   ├── ...
-|       └── evaluation					# Put all evaluation data here
-│           ├── image1.nii.gz           # The image name are arbitrary
-|           ├──	image2.nii.gz
-|           ├──	...
+│       │   ├──	...
+│       ├── testing              		# Put all testing data here
+│       │   ├── case1            		# follow the same folder structure as the training one
+│       │   |   └── image_brain_mni.nii
+│       │   ├── case2
+│       │   |   └── image_brain_mni.nii
+│       │   ├── ...
+│       ├── evaluation					# Put all evaluation data here
+│       │   ├── image1.nii.gz           # The image name are arbitrary
+│       │   ├──	image2.nii.gz
+│       │   ├──	...
+│       └── labels.csv					# CSV file stores all labels for training and testing
 ├── tmp
-|   ├── cktp                  			# Tensorflow checkpoints
+│   ├── cktp                  			# Tensorflow checkpoints
 |   └── log                   			# Tensorboard logging folder
 ├── ...
 ```
+
+In training phase, the the program will automatically scan all the data in training and testing folder. The case/subject name is identified by subfolder's name and all of them should also be listed in `labels.csv`. Filenames could be altered in `config.csv`.
+
+An example dataset folder is provided in [./data/example](./data/example).
 
 #### Data preprocessing
 
