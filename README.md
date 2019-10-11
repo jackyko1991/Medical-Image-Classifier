@@ -40,7 +40,7 @@ In the default `config.json`, the data folder structure is as following:
 .										# Repository root
 ├── ...
 ├── data                      
-│   └── dataset							# Data directory
+│   └── example							# Data directory
 │       ├── training 					# Put all training data here
 │       |   ├── case1            		# foldername for the cases is arbitrary
 │       |   |   └── image_brain_mni.nii # The image name is specified in config.json
