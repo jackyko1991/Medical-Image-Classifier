@@ -45,14 +45,14 @@ class Lenet3D(object):
 		return pool
 
 	def GetNetwork(self, input_image):
-		input_channels = int(input_image.get_shape()[-1])
-		conv1Filter_shape = [5,5,5,input_channels,20]
-		pool1 = self.ConvPool3d_block(input_image, conv1Filter_shape, self.is_training, self.activation_fn)
-		pool1_channels = int(pool1.get_shape()[-1])
-		conv1Filter_shape = [5,5,5,pool1_channels,50]
-		pool2 = self.ConvPool3d_block(pool1, conv1Filter_shape, self.is_training , self.activation_fn)
+		with tf.variable_scope('lenet3d'):
+			input_channels = int(input_image.get_shape()[-1])
+			conv1Filter_shape = [5,5,5,input_channels,20]
+			pool1 = self.ConvPool3d_block(input_image, conv1Filter_shape, self.is_training, self.activation_fn)
+			pool1_channels = int(pool1.get_shape()[-1])
+			conv1Filter_shape = [5,5,5,pool1_channels,50]
+			pool2 = self.ConvPool3d_block(pool1, conv1Filter_shape, self.is_training , self.activation_fn)
 
-		with tf.variable_scope('lenet3d/output_layer'):
 			flatten = tf.reshape(pool2, [-1, pool2.get_shape()[1]*pool2.get_shape()[2]*pool2.get_shape()[3]*pool2.get_shape()[4]])
 			dense0 = tf.layers.dense(inputs=flatten,units=768, activation=self.activation_fn)
 			dense1 = tf.layers.dense(inputs=dense0,units=500, activation=self.activation_fn)
