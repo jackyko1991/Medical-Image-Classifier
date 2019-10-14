@@ -269,10 +269,10 @@ class Resnet3D(object):
 					with tf.variable_scope('block' + str(block+1)):
 						x = self.residual_block(x,self.num_channels*(1+module), self.is_training)
 
-			avgPool = tf.layers.average_pooling3d(x, pool_size=[2,2,2], strides=[2,2,2], padding = 'valid')
+		avgPool = tf.layers.average_pooling3d(x, pool_size=[2,2,2], strides=[2,2,2], padding = 'valid')
 
-			flatten = tf.reshape(avgPool, [-1, avgPool.get_shape()[1]*avgPool.get_shape()[2]*avgPool.get_shape()[3]*avgPool.get_shape()[4]])
-			dense = tf.layers.dense(inputs=flatten,units=1000, activation=self.activation_fn)
-			logits = tf.layers.dense(inputs=dense,units=self.num_classes, activation=None)
+		flatten = tf.reshape(avgPool, [-1, avgPool.get_shape()[1]*avgPool.get_shape()[2]*avgPool.get_shape()[3]*avgPool.get_shape()[4]])
+		dense = tf.layers.dense(inputs=flatten,units=1000, activation=self.activation_fn)
+		logits = tf.layers.dense(inputs=dense,units=self.num_classes, activation=None)
 
 		return logits
