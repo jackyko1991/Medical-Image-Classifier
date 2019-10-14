@@ -39,7 +39,6 @@ def get_parser():
 		help='Select GPU device(s) (default = 0)',
 		metavar='GPU_IDs')
 
-
 	args = parser.parse_args()
 
 	if args.verbose:
