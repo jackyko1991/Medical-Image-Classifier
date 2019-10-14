@@ -6,6 +6,7 @@ import networks
 import sys
 import os
 import shutil
+import math
 
 class MedicalImageClassifier(object):
 	def __init__(self,sess,config):
@@ -94,7 +95,7 @@ class MedicalImageClassifier(object):
 					train=train,
 					)
 			dataset = Dataset.get_dataset()
-			dataset = dataset.shuffle(buffer_size=1)
+			dataset = dataset.shuffle(buffer_size=5)
 			dataset = dataset.batch(self.batch_size,drop_remainder=False)
 
 		return dataset.make_initializable_iterator()
@@ -264,15 +265,24 @@ class MedicalImageClassifier(object):
 					self.sess.run(tf.initializers.local_variables())
 					images, label = self.sess.run(self.next_element_train)
 					if images.shape[0] < self.batch_size:
-						if self.dimension == 2:
-							images_zero_pads = np.zeros((self.batch_size-images.shape[0],images.shape[1],images.shape[2],images.shape[3]))
-							label_zero_pads = np.zeros((self.batch_size-label.shape[0],images.shape[1]))
-						else:
-							images_zero_pads = np.zeros((self.batch_size-images.shape[0],images.shape[1],images.shape[2],images.shape[3],images.shape[4]))
+						# if self.dimension == 2:
+						# 	images_zero_pads = np.zeros((self.batch_size-images.shape[0],images.shape[1],images.shape[2],images.shape[3]))
+						# 	label_zero_pads = np.zeros((self.batch_size-label.shape[0],images.shape[1]))
+						# else:
+						# 	images_zero_pads = np.zeros((self.batch_size-images.shape[0],images.shape[1],images.shape[2],images.shape[3],images.shape[4]))
 						
-						label_zero_pads = np.zeros((self.batch_size-label.shape[0],label.shape[1]))
-						images = np.concatenate((images,images_zero_pads))
-						label = np.concatenate((label,label_zero_pads))
+						# label_zero_pads = np.zeros((self.batch_size-label.shape[0],label.shape[1]))
+						# images = np.concatenate((images,images_zero_pads))
+						# label = np.concatenate((label,label_zero_pads))
+						if self.dimension == 2:
+							images = np.tile(images,(math.ceil(self.batch_size/images.shape[0]),1,1,1))
+							images = images[:self.batch_size,]
+						else:
+							images = np.tile(images,(math.ceil(self.batch_size/images.shape[0]),1,1,1,1))
+						label = np.tile(label,(math.ceil(self.batch_size/label.shape[0]),1))
+
+						images = images[:self.batch_size,]
+						label = label[:self.batch_size,]
 
 					sigmoid, loss, result, accuracy, train = self.sess.run(
 						[self.sigmoid_op,self.loss_op, self.result_op, self.acc_op, train_op], 
@@ -315,15 +325,25 @@ class MedicalImageClassifier(object):
 						self.sess.run(tf.local_variables_initializer())
 						images, label = self.sess.run(self.next_element_test)
 						if images.shape[0] < self.batch_size:
-							if self.dimension == 2:
-								images_zero_pads = np.zeros((self.batch_size-images.shape[0],images.shape[1],images.shape[2],images.shape[3]))
-								label_zero_pads = np.zeros((self.batch_size-label.shape[0],images.shape[1]))
-							else:
-								images_zero_pads = np.zeros((self.batch_size-images.shape[0],images.shape[1],images.shape[2],images.shape[3],images.shape[4]))
+							# if self.dimension == 2:
+							# 	images_zero_pads = np.zeros((self.batch_size-images.shape[0],images.shape[1],images.shape[2],images.shape[3]))
+							# 	label_zero_pads = np.zeros((self.batch_size-label.shape[0],images.shape[1]))
+							# else:
+							# 	images_zero_pads = np.zeros((self.batch_size-images.shape[0],images.shape[1],images.shape[2],images.shape[3],images.shape[4]))
 							
-							label_zero_pads = np.zeros((self.batch_size-label.shape[0],label.shape[1]))
-							images = np.concatenate((images,images_zero_pads))
-							label = np.concatenate((label,label_zero_pads))
+							# label_zero_pads = np.zeros((self.batch_size-label.shape[0],label.shape[1]))
+							# images = np.concatenate((images,images_zero_pads))
+							# label = np.concatenate((label,label_zero_pads))
+
+							if self.dimension == 2:
+								images = np.tile(images,(math.ceil(self.batch_size/images.shape[0]),1,1,1))
+								images = images[:self.batch_size,]
+							else:
+								images = np.tile(images,(math.ceil(self.batch_size/images.shape[0]),1,1,1,1))
+							label = np.tile(label,(math.ceil(self.batch_size/label.shape[0]),1))
+							
+							images = images[:self.batch_size,]
+							label = label[:self.batch_size,]
 						
 						self.network.is_training = False;
 						sigmoid, loss, result, accuracy = self.sess.run(
