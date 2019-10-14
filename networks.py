@@ -110,40 +110,40 @@ class Alexnet3D(object):
 
 	def GetNetwork(self, input_image):
 		print("Input image: ", input_image.get_shape() )
-		input_channels = int(input_image.get_shape()[-1])
-		conv1Filter_shape = [5,5,5,input_channels,96]
-		layer1_stride = [1,1,1,1,1]
-		paddings = tf.constant([[0, 0], [2, 2], [2, 2], [2, 2], [0, 0]])
-		input_image = tf.pad(input_image, paddings, "CONSTANT") 
-		pool1 = self.ConvPool3d_block(input_image, conv1Filter_shape, strides = layer1_stride,is_training = self.is_training)
-		pool1_channels = int(pool1.get_shape()[-1])
 
-		conv2Filter_shape = [5,5,5,pool1_channels,256]
-		pool1 = tf.pad(pool1, paddings, "CONSTANT") 
-		pool2 = self.ConvPool3d_block(pool1, conv2Filter_shape, is_training = self.is_training)
-		pool2_channels = int(pool2.get_shape()[-1])
+		with tf.variable_scope('alexnet3d'):
+			input_channels = int(input_image.get_shape()[-1])
+			conv1Filter_shape = [5,5,5,input_channels,96]
+			layer1_stride = [1,1,1,1,1]
+			paddings = tf.constant([[0, 0], [2, 2], [2, 2], [2, 2], [0, 0]])
+			input_image = tf.pad(input_image, paddings, "CONSTANT") 
+			pool1 = self.ConvPool3d_block(input_image, conv1Filter_shape, strides = layer1_stride,is_training = self.is_training)
+			pool1_channels = int(pool1.get_shape()[-1])
 
-		paddings = tf.constant([[0, 0], [1, 1], [1, 1], [1, 1], [0, 0]])
-		pool2 = tf.pad(pool2, paddings, "CONSTANT") 
-		conv3Filter_shape = [3,3,3,pool2_channels,384]
-		pool3 = self.Conv3d_block(pool2, conv3Filter_shape, is_training = self.is_training)
-		pool3_channels = int(pool3.get_shape()[-1])
+			conv2Filter_shape = [5,5,5,pool1_channels,256]
+			pool1 = tf.pad(pool1, paddings, "CONSTANT") 
+			pool2 = self.ConvPool3d_block(pool1, conv2Filter_shape, is_training = self.is_training)
+			pool2_channels = int(pool2.get_shape()[-1])
 
-		pool3 = tf.pad(pool3, paddings, "CONSTANT") 
-		conv4Filter_shape = [3,3,3, pool3_channels,384]
-		pool4 = self.Conv3d_block(pool3, conv4Filter_shape, is_training = self.is_training)
-		pool4_channels = int(pool4.get_shape()[-1])
+			paddings = tf.constant([[0, 0], [1, 1], [1, 1], [1, 1], [0, 0]])
+			pool2 = tf.pad(pool2, paddings, "CONSTANT") 
+			conv3Filter_shape = [3,3,3,pool2_channels,384]
+			pool3 = self.Conv3d_block(pool2, conv3Filter_shape, is_training = self.is_training)
+			pool3_channels = int(pool3.get_shape()[-1])
 
-		pool4 = tf.pad(pool4, paddings, "CONSTANT") 
-		conv5Filter_shape = [3,3,3, pool4_channels, 256]
-		pool5 = self.ConvPool3d_block(pool4, conv5Filter_shape, is_training = self.is_training)
+			pool3 = tf.pad(pool3, paddings, "CONSTANT") 
+			conv4Filter_shape = [3,3,3, pool3_channels,384]
+			pool4 = self.Conv3d_block(pool3, conv4Filter_shape, is_training = self.is_training)
+			pool4_channels = int(pool4.get_shape()[-1])
 
-		with tf.variable_scope('alexnet3d/output_layer'):
+			pool4 = tf.pad(pool4, paddings, "CONSTANT") 
+			conv5Filter_shape = [3,3,3, pool4_channels, 256]
+			pool5 = self.ConvPool3d_block(pool4, conv5Filter_shape, is_training = self.is_training)
+
 			flatten = tf.reshape(pool5, [-1, pool5.get_shape()[1]*pool5.get_shape()[2]*pool5.get_shape()[3]*pool5.get_shape()[4]])
-			dense0 = tf.layers.dense(inputs=flatten,units=4096, activation=self.activation_fn)
-			dense1 = tf.layers.dense(inputs=dense0,units=4096, activation=self.activation_fn)
-			dense2 = tf.layers.dense(inputs=dense1,units=1000, activation=self.activation_fn)
-			logits = tf.layers.dense(inputs=dense2,units=self.num_classes, activation=None)
+			dense0 = tf.layers.dense(inputs=flatten,units=760, activation=self.activation_fn)
+			dense1 = tf.layers.dense(inputs=dense0,units=500, activation=self.activation_fn)
+			logits = tf.layers.dense(inputs=dense1,units=self.num_classes, activation=None)
 
 		return logits
 
