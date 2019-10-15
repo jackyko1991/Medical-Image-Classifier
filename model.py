@@ -167,24 +167,32 @@ class MedicalImageClassifier(object):
 				is_training=True,
 				activation_fn="relu",
 				keep_prob=1.0,
-				init_conv_shape=7,
+				init_conv_shape=5,
 				init_pool=True,
-				module_config=[3,3,5,2])
+				module_config=[2,2,2])
 		else:
 			sys.exit('Invalid Network')
 
 		self.logits_op = self.network.GetNetwork(self.input_placeholder)
 		self.logits_op = tf.reshape(self.logits_op, [-1,self.output_channel_num])
 
-		self.loss_op = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.logits_op,labels=self.output_placeholder))
+		self.loss_op = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.logits_op,labels=self.output_placeholder),0)
+		self.avg_loss_op = tf.reduce_mean(self.loss_op)
 
 		self.sigmoid_op = tf.sigmoid(self.logits_op)
 		self.result_op = tf.math.round(self.sigmoid_op)
 
 		acc, self.acc_op = tf.metrics.accuracy(labels=self.output_placeholder, predictions=self.result_op)
 
-		tf.summary.scalar('loss', self.loss_op)
+		tf.summary.scalar('loss', self.avg_loss_op)
 		tf.summary.scalar('accuracy',self.acc_op)
+
+		for i in range(len(self.class_names)):
+			# print(self.class_names[i])
+			class_acc, class_acc_op = tf.metrics.accuracy(labels=self.output_placeholder[i], predictions=self.result_op[i])
+			tf.summary.scalar('loss_' + self.class_names[i], self.loss_op[i])
+			tf.summary.scalar('accuracy_' + self.class_names[i], class_acc_op)
+		# exit()
 
 	def train(self):
 		# read config to class variables
@@ -207,7 +215,7 @@ class MedicalImageClassifier(object):
 				sys.exit('Invalid Optimizer')
 
 			train_op = optimizer.minimize(
-				loss=self.loss_op,
+				loss=self.avg_loss_op,
 				global_step=self.global_step
 				)
 
@@ -285,7 +293,7 @@ class MedicalImageClassifier(object):
 						label = label[:self.batch_size,]
 
 					sigmoid, loss, result, accuracy, train = self.sess.run(
-						[self.sigmoid_op,self.loss_op, self.result_op, self.acc_op, train_op], 
+						[self.sigmoid_op,self.avg_loss_op, self.result_op, self.acc_op, train_op], 
 						feed_dict={self.input_placeholder: images, self.output_placeholder: label})
 					print("{}: loss: {}".format(datetime.datetime.now(),loss))
 					print("{}: accuracy: {}".format(datetime.datetime.now(),accuracy))
@@ -347,7 +355,7 @@ class MedicalImageClassifier(object):
 						
 						self.network.is_training = False;
 						sigmoid, loss, result, accuracy = self.sess.run(
-							[self.sigmoid_op,self.loss_op, self.result_op, self.acc_op], 
+							[self.sigmoid_op,self.avg_loss_op, self.result_op, self.acc_op], 
 							feed_dict={self.input_placeholder: images, self.output_placeholder: label})
 						print("{}: loss: {}".format(datetime.datetime.now(),loss))
 						print("{}: accuracy: {}".format(datetime.datetime.now(),accuracy))
@@ -369,7 +377,7 @@ class MedicalImageClassifier(object):
 
 		# close tensorboard summary writer
 		train_summary_writer.close()
-		if FLAGS.testing:
+		if self.testing:
 			test_summary_writer.close()
 
 	def predict(self):

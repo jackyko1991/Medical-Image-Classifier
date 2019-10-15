@@ -141,8 +141,8 @@ class Alexnet3D(object):
 			pool5 = self.ConvPool3d_block(pool4, conv5Filter_shape, is_training = self.is_training)
 
 			flatten = tf.reshape(pool5, [-1, pool5.get_shape()[1]*pool5.get_shape()[2]*pool5.get_shape()[3]*pool5.get_shape()[4]])
-			dense0 = tf.layers.dense(inputs=flatten,units=4096, activation=self.activation_fn)
-			dense1 = tf.layers.dense(inputs=dense0,units=4096, activation=self.activation_fn)
+			dense0 = tf.layers.dense(inputs=flatten,units=768, activation=self.activation_fn)
+			dense1 = tf.layers.dense(inputs=dense0,units=500, activation=self.activation_fn)
 			logits = tf.layers.dense(inputs=dense1,units=self.num_classes, activation=None)
 
 		return logits
