@@ -178,6 +178,8 @@ class MedicalImageClassifier(object):
 
 		self.loss_op = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.logits_op,labels=self.output_placeholder),0)
 		self.avg_loss_op = tf.reduce_mean(self.loss_op)
+		# self.avg_loss_op = tf.reduce_prod(self.loss_op)*(10**(len(self.class_names)-1))
+		# self.avg_loss_op = tf.reduce_prod(self.loss_op)
 
 		self.sigmoid_op = tf.sigmoid(self.logits_op)
 		self.result_op = tf.math.round(self.sigmoid_op)
@@ -211,6 +213,10 @@ class MedicalImageClassifier(object):
 		with tf.name_scope("optimizer"):
 			if self.optimizer_name == "GradientDescent":
 				optimizer = tf.train.GradientDescentOptimizer(learning_rate=self.learning_rate)
+			elif self.optimizer_name == "Momentum":
+				optimizer = tf.train.MomentumOptimizer(learning_rate=self.learning_rate,momentum=0.9)
+			elif self.optimizer_name == "Adam":
+				optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate, beta1=0.5)
 			else:
 				sys.exit('Invalid Optimizer')
 
