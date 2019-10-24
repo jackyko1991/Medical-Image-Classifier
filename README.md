@@ -40,7 +40,7 @@ Following networks are to be developed:
 ### Required Libraries
 Known good dependencies:
 - Anaconda 3.6
-- Tensorflow 1.14
+- Tensorflow 1.12
 - SimpleITK
 
 ### Software Configuration
