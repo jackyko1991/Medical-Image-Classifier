@@ -190,11 +190,9 @@ class MedicalImageClassifier(object):
 		tf.summary.scalar('accuracy',self.acc_op)
 
 		for i in range(len(self.class_names)):
-			# print(self.class_names[i])
 			class_acc, class_acc_op = tf.metrics.accuracy(labels=self.output_placeholder[i], predictions=self.result_op[i])
 			tf.summary.scalar('loss_' + self.class_names[i], self.loss_op[i])
 			tf.summary.scalar('accuracy_' + self.class_names[i], class_acc_op)
-		# exit()
 
 	def train(self):
 		# read config to class variables
