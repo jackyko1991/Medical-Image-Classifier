@@ -6,26 +6,26 @@
     },   
     "TrainingSetting": {
         "Data": {
-            "TrainingDataDirectory":"./data/dataset/training",
-            "TestingDataDirectory": "./data/dataset/testing",
+            "TrainingDataDirectory":"./data/example/training",
+            "TestingDataDirectory": "./data/example/testing",
             "ImageFilenames": ["image_brain_mni.nii"],
             "LabelFilename":"./data/dataset/labels.csv",
-            "ClassNames":["IPH","SAH","SDH/EDH","IVH"]
+            "ClassNames":["IPH","SAH","SDH+EDH","IVH"]
         },
-        "BatchSize": 1,
+        "BatchSize": 7,
         "PatchShape": [91,109,91],
         "ImageLog": false,
         "Restore": true,
         "LogDir": "./tmp/log",
         "CheckpointDir": "./tmp/ckpt",
         "Network": {
-            "Name":"ResNet",
-            "Dropout":0.0
+            "Name":"LeNet",
+            "Dropout":0.1
         },
         "Testing": true,
-        "Epoches": 9999,
+        "Epoches": 100,
         "Optimizer":{
-            "Name": "GradientDescent",
+            "Name": "Momentum",
             "InitialLearningRate": 1e-3,
             "Momentum":0.9,
             "Decay":{
@@ -37,9 +37,9 @@
     },
     "PredictionSetting":{
         "Data":{
-            "EvaluationDataDirectory":"./data/dataset/evaluate",
+            "EvaluationDataDirectory":"./data/example/evaluate",
             "ImageFilenames": ["image_brain_mni.nii"],
-            "OutputFilename":"./data/dataset/prediction.csv"
+            "OutputFilename":"./data/example/prediction.csv"
         },
         "ModelPath": "./tmp/ckpt/checkpoint-00001.meta",
         "CheckPointPath": "./tmp/ckpt/checkpoint-00001"
