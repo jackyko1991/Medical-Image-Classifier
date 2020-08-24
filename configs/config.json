@@ -1,0 +1,53 @@
+{
+    "ProjectName": "Medical Image Classifier",
+    "ProjectDetail": {
+        "Description": "To detect intracranial hemorrhage types with convolution neural network classifier.",
+        "Modality": "CT"
+    },
+    "Network": {
+        "PatchShape": [128,128,128],
+        "Name":"ResNet",
+        "Dropout":0.1,
+        "Spacing": [0.25,0.25,0.25]
+    },
+    "TrainingSetting": {
+        "Data": {
+            "TrainingDataDirectory":"./data/dataset_no_preprocessing/training",
+            "TestingDataDirectory": "./data/dataset_no_preprocessing/testing",
+            "ImageFilenames": ["image.nii.gz"],
+            "LabelFilename":"./data/dataset_no_preprocessing/labels.csv",
+            "ClassNames":["ANY","IPH","SAH","SDH+EDH","IVH"],
+            "AdditionalFeaturesFilename": "./data/dataset_no_preprocessing/features.csv",
+            "AdditionalFeatures": ["Feature1","Feature2"]
+        },
+        "BatchSize": 7,
+        "ImageLog": false,
+        "Restore": true,
+        "LogDir": "./tmp_resnet64/log",
+        "CheckpointDir": "./tmp_resnet64/ckpt",
+        "Testing": true,
+        "Epoches": 100,
+        "MaxSteps": 300000,
+        "LogInterval": 50,
+        "TestingStepInterval":10,
+        "Optimizer":{
+            "Name": "Momentum",
+            "InitialLearningRate": 1e-3,
+            "Momentum":0.9,
+            "Decay":{
+                "Factor": 0.95,
+                "Step": 100
+            }
+        }
+    },
+    "PredictionSetting":{
+        "Data":{
+            "EvaluationDataDirectory":"./data/dataset/evaluate",
+            "ImageFilenames": ["image_brain_mni.nii"],
+            "OutputFilename":"./data/dataset/prediction.csv"
+        },
+        "ModelPath": "./tmp/ckpt/checkpoint-00001.meta",
+        "CheckPointPath": "./tmp/ckpt/checkpoint-00001"
+    }
+}
+

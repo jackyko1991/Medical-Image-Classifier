@@ -1,6 +1,6 @@
 import argparse
 import json
-from model import MedicalImageClassifier
+from core.model import MedicalImageClassifier
 import os
 import tensorflow as tf
 

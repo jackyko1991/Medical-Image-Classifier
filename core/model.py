@@ -1,8 +1,9 @@
 import tensorflow as tf
-import NiftiDataset
+from core import NiftiDataset
+from core import networks
+from core import transforms
 import numpy as np
 import datetime
-import networks
 import sys
 import os
 import shutil
@@ -48,13 +49,19 @@ class MedicalImageClassifier(object):
 		self.output_channel_num = len(self.config['TrainingSetting']['Data']['ClassNames'])
 
 		self.batch_size = self.config['TrainingSetting']['BatchSize']
-		self.patch_shape = self.config['TrainingSetting']['PatchShape']
-		self.dimension = len(self.config['TrainingSetting']['PatchShape'])
 		self.image_log = self.config['TrainingSetting']['ImageLog']
 
 		self.image_filenames = self.config['TrainingSetting']['Data']['ImageFilenames']
 		self.label_filename = self.config['TrainingSetting']['Data']['LabelFilename']
 		self.class_names = self.config['TrainingSetting']['Data']['ClassNames']
+
+		# additional features
+		if ('AdditionalFeaturesFilename' in self.config["TrainingSetting"]['Data']) and ('AdditionalFeatures' in self.config["TrainingSetting"]['Data']):
+			self.additional_features = self.config["TrainingSetting"]['Data']['AdditionalFeatures']
+			self.additional_features_num = len(self.config["TrainingSetting"]['Data']['AdditionalFeatures'])
+		else:
+			self.additional_features = []
+			self.additional_features_num = 0
 
 		self.train_data_dir = self.config['TrainingSetting']['Data']['TrainingDataDirectory']
 		self.test_data_dir = self.config['TrainingSetting']['Data']['TestingDataDirectory']
@@ -65,15 +72,20 @@ class MedicalImageClassifier(object):
 		self.ckpt_dir = self.config['TrainingSetting']['CheckpointDir']
 
 		self.epoches = self.config['TrainingSetting']['Epoches']
+		self.max_steps = self.config['TrainingSetting']['MaxSteps']
+		self.log_interval = self.config['TrainingSetting']['LogInterval']
+		self.testing_step_interval = self.config['TrainingSetting']['TestingStepInterval']
 
-		self.network_name = self.config['TrainingSetting']['Network']['Name']
-		self.network_dropout_rate = self.config['TrainingSetting']['Network']['Dropout']
+		self.network_name = self.config['Network']['Name']
+		self.network_dropout_rate = self.config['Network']['Dropout']
+		self.spacing = self.config['Network']['Spacing']
+		self.patch_shape = self.config['Network']['PatchShape']
+		self.dimension = len(self.config['Network']['PatchShape'])
 
 		self.optimizer_name = self.config['TrainingSetting']['Optimizer']['Name']
 		self.initial_learning_rate = self.config['TrainingSetting']['Optimizer']['InitialLearningRate']
 		self.decay_factor = self.config['TrainingSetting']['Optimizer']['Decay']['Factor']
 		self.decay_step = self.config['TrainingSetting']['Optimizer']['Decay']['Step']
-		self.spacing = self.config['TrainingSetting']['Spacing']
 
 		self.model_path = self.config['PredictionSetting']['ModelPath']
 		self.checkpoint_path = self.config['PredictionSetting']['CheckPointPath']
@@ -128,14 +140,9 @@ class MedicalImageClassifier(object):
 						tf.summary.image(self.image_filenames[input_channel],tf.transpose(image_log,[3,1,2,0]), max_outputs=self.patch_shape[-1])
 
 		# training and testing augmentation pipeline
-		self.train_transforms = [
-			NiftiDataset.Normalization(),
-			NiftiDataset.RandomNoise()
-		]
+		self.train_transforms = transforms.train_transforms(self.spacing, self.patch_shape)
 
-		self.test_transforms = [
-			NiftiDataset.Normalization()
-		]
+		self.test_transforms = transforms.test_transforms(self.spacing, self.patch_shape)
 
 		#  get input and output datasets
 		self.train_iterator = self.dataset_iterator(self.train_data_dir,self.train_transforms)
@@ -186,13 +193,57 @@ class MedicalImageClassifier(object):
 
 		acc, self.acc_op = tf.metrics.accuracy(labels=self.output_placeholder, predictions=self.result_op)
 
-		tf.summary.scalar('loss', self.avg_loss_op)
-		tf.summary.scalar('accuracy',self.acc_op)
+		tf.summary.scalar('loss/average', self.avg_loss_op)
+		tf.summary.scalar('accuracy/overall',self.acc_op)
+
+		self.class_tp = []
+		self.class_tn = []
+		self.class_fp = []
+		self.class_fn = []
+		self.class_auc = []
+		class_precision = []
+		class_sensitivity = []
+		class_specificity = []
 
 		for i in range(len(self.class_names)):
 			class_acc, class_acc_op = tf.metrics.accuracy(labels=self.output_placeholder[i], predictions=self.result_op[i])
-			tf.summary.scalar('loss_' + self.class_names[i], self.loss_op[i])
-			tf.summary.scalar('accuracy_' + self.class_names[i], class_acc_op)
+			class_tp, class_tp_op = tf.metrics.true_positives(labels=self.output_placeholder[:,i], predictions=self.result_op[:,i])
+			class_tn, class_tn_op = tf.metrics.true_negatives(labels=self.output_placeholder[:,i], predictions=self.result_op[:,i])
+			class_fp, class_fp_op = tf.metrics.false_positives(labels=self.output_placeholder[:,i], predictions=self.result_op[:,i])
+			class_fn, class_fn_op = tf.metrics.false_negatives(labels=self.output_placeholder[:,i], predictions=self.result_op[:,i])
+			precision = class_tp_op/(class_tp_op+class_fp_op)
+			sensitivity = class_tp_op/(class_tp_op+class_fn_op)
+			specificity = class_tn_op/(class_tn_op+class_fp_op)
+
+			precision = tf.where(tf.is_nan(precision), tf.ones_like(precision) * 0.5, precision)
+			sensitivity = tf.where(tf.is_nan(sensitivity), tf.ones_like(sensitivity) * 0.5, sensitivity)
+			specificity = tf.where(tf.is_nan(specificity), tf.ones_like(specificity) * 0.5, specificity)
+			class_auc, class_auc_op = tf.metrics.auc(labels=self.output_placeholder[:,i], predictions=self.result_op[:,i])
+
+			self.class_tp.append(class_tp_op)
+			self.class_tn.append(class_tn_op)
+			self.class_fp.append(class_fp_op)
+			self.class_fn.append(class_fn_op)
+			self.class_auc.append(class_auc_op)
+			class_precision.append(precision)
+			class_sensitivity.append(sensitivity)
+			class_specificity.append(specificity)
+
+			tf.summary.scalar('loss/' + self.class_names[i], self.loss_op[i])
+			tf.summary.scalar('accuracy/' + self.class_names[i], class_acc_op)
+			tf.summary.scalar('precision/' + self.class_names[i],precision)
+			tf.summary.scalar('sensitivity/' + self.class_names[i],sensitivity)
+			tf.summary.scalar('specificity/' + self.class_names[i],specificity)
+			tf.summary.scalar('auc/' + self.class_names[i],class_auc_op)
+
+		avg_precision = tf.reduce_mean(class_precision)
+		avg_sensitivity = tf.reduce_mean(class_sensitivity)
+		avg_specificity = tf.reduce_mean(class_specificity)
+		avg_auc = tf.reduce_mean(self.class_auc)
+		tf.summary.scalar('precision/average', avg_precision)
+		tf.summary.scalar('sensitivity/average', avg_sensitivity)
+		tf.summary.scalar('specificity/average', avg_specificity)
+		tf.summary.scalar('auc/average', avg_auc)
 
 	def train(self):
 		# read config to class variables
@@ -270,6 +321,8 @@ class MedicalImageClassifier(object):
 
 			# initialize iterator in each new epoch
 			self.sess.run(self.train_iterator.initializer)
+			if self.testing:
+				self.sess.run(self.test_iterator.initializer)
 
 			# training phase
 			while True:
@@ -300,10 +353,10 @@ class MedicalImageClassifier(object):
 						[self.sigmoid_op,self.avg_loss_op, self.result_op, self.acc_op, train_op], 
 						feed_dict={self.input_placeholder: images, self.output_placeholder: label})
 					print("{}: loss: {}".format(datetime.datetime.now(),loss))
-					print("{}: accuracy: {}".format(datetime.datetime.now(),accuracy))
-					# print("{}: ground truth: {}".format(datetime.datetime.now(),label))
-					# print("{}: result: {}".format(datetime.datetime.now(),result))
-					# print("{}: sigmoid: {}".format(datetime.datetime.now(),sigmoid))
+					# print("{}: accuracy: {}".format(datetime.datetime.now(),accuracy))
+					print("{}: ground truth: {}".format(datetime.datetime.now(),label))
+					print("{}: result: {}".format(datetime.datetime.now(),result))
+					print("{}: sigmoid: {}".format(datetime.datetime.now(),sigmoid))
 
 					# perform summary log after training op
 					summary = self.sess.run(summary_op,feed_dict={
@@ -313,6 +366,49 @@ class MedicalImageClassifier(object):
 
 					train_summary_writer.add_summary(summary,global_step=tf.train.global_step(self.sess,self.global_step))
 					train_summary_writer.flush()
+
+					# testing phase
+					if self.testing and (self.global_step.eval()%self.testing_step_interval == 0):
+						self.network.is_training = False
+
+						try:
+							image, label = self.sess.run(self.next_element_test)
+						except tf.errors.OutOfRangeError:
+							self.sess.run(self.test_iterator.initializer)
+							image, label = self.sess.run(self.next_element_test)
+							
+						# if images.shape[0] < self.batch_size:
+						# 	if self.dimension == 2:
+						# 		images_zero_pads = np.zeros((self.batch_size-images.shape[0],images.shape[1],images.shape[2],images.shape[3]))
+						# 		label_zero_pads = np.zeros((self.batch_size-label.shape[0],images.shape[1]))
+						# 	else:
+						# 		images_zero_pads = np.zeros((self.batch_size-images.shape[0],images.shape[1],images.shape[2],images.shape[3],images.shape[4]))
+							
+						# label_zero_pads = np.zeros((self.batch_size-label.shape[0],label.shape[1]))
+		 				# images = np.concatenate((images,images_zero_pads))
+						# label = np.concatenate((label,label_zero_pads))
+
+						if self.dimension == 2:
+							images = np.tile(images,(math.ceil(self.batch_size/images.shape[0]),1,1,1))
+							images = images[:self.batch_size,]
+						else:
+							images = np.tile(images,(math.ceil(self.batch_size/images.shape[0]),1,1,1,1))
+							label = np.tile(label,(math.ceil(self.batch_size/label.shape[0]),1))
+								
+						images = images[:self.batch_size,]
+						label = label[:self.batch_size,]
+
+						sigmoid, loss, result, accuracy, summary = self.sess.run(
+							[self.sigmoid_op,self.avg_loss_op, self.result_op, self.acc_op, summary_op], 
+							feed_dict={self.input_placeholder: images, self.output_placeholder: label})
+						print("{}: loss: {}".format(datetime.datetime.now(),loss))
+						# print("{}: accuracy: {}".format(datetime.datetime.now(),accuracy))
+						print("{}: ground truth: {}".format(datetime.datetime.now(),label))
+						print("{}: result: {}".format(datetime.datetime.now(),result))
+						print("{}: sigmoid: {}".format(datetime.datetime.now(),sigmoid))
+
+						test_summary_writer.add_summary(summary, global_step=tf.train.global_step(self.sess, self.global_step))
+						test_summary_writer.flush()
 
 				except tf.errors.OutOfRangeError:
 					start_epoch_inc.op.run()
@@ -327,57 +423,6 @@ class MedicalImageClassifier(object):
 					print("{}: Saving checkpoint succeed".format(datetime.datetime.now()))
 
 					break
-
-			# testing phase
-			if self.testing:
-				print("{}: Training of epoch {} finishes, testing start".format(datetime.datetime.now(),epoch+1))
-				self.sess.run(self.test_iterator.initializer)
-				while True:
-					try:
-						self.sess.run(tf.local_variables_initializer())
-						images, label = self.sess.run(self.next_element_test)
-						if images.shape[0] < self.batch_size:
-							# if self.dimension == 2:
-							# 	images_zero_pads = np.zeros((self.batch_size-images.shape[0],images.shape[1],images.shape[2],images.shape[3]))
-							# 	label_zero_pads = np.zeros((self.batch_size-label.shape[0],images.shape[1]))
-							# else:
-							# 	images_zero_pads = np.zeros((self.batch_size-images.shape[0],images.shape[1],images.shape[2],images.shape[3],images.shape[4]))
-							
-							# label_zero_pads = np.zeros((self.batch_size-label.shape[0],label.shape[1]))
-							# images = np.concatenate((images,images_zero_pads))
-							# label = np.concatenate((label,label_zero_pads))
-
-							if self.dimension == 2:
-								images = np.tile(images,(math.ceil(self.batch_size/images.shape[0]),1,1,1))
-								images = images[:self.batch_size,]
-							else:
-								images = np.tile(images,(math.ceil(self.batch_size/images.shape[0]),1,1,1,1))
-							label = np.tile(label,(math.ceil(self.batch_size/label.shape[0]),1))
-							
-							images = images[:self.batch_size,]
-							label = label[:self.batch_size,]
-						
-						self.network.is_training = False;
-						sigmoid, loss, result, accuracy = self.sess.run(
-							[self.sigmoid_op,self.avg_loss_op, self.result_op, self.acc_op], 
-							feed_dict={self.input_placeholder: images, self.output_placeholder: label})
-						print("{}: loss: {}".format(datetime.datetime.now(),loss))
-						print("{}: accuracy: {}".format(datetime.datetime.now(),accuracy))
-						# print("{}: ground truth: {}".format(datetime.datetime.now(),label))
-						# print("{}: result: {}".format(datetime.datetime.now(),result))
-						# print("{}: sigmoid: {}".format(datetime.datetime.now(),sigmoid))
-
-						# perform summary log after testing op
-						summary = self.sess.run(summary_op,feed_dict={
-							self.input_placeholder: images,
-							self.output_placeholder: label
-							})
-
-						test_summary_writer.add_summary(summary, global_step=tf.train.global_step(self.sess, self.global_step))
-						test_summary_writer.flush()
-
-					except tf.errors.OutOfRangeError:
-						break
 
 		# close tensorboard summary writer
 		train_summary_writer.close()

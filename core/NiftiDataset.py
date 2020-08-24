@@ -126,7 +126,7 @@ class NiftiDataset3D(object):
 
 		# get the associate label
 		# need to modify to access data by header
-		label = self.label_df.loc[self.label_df['Case no.']==case].iloc[0].values.tolist()[1:5]
+		label = self.label_df.loc[self.label_df['Case no.']==case].iloc[0].values.tolist()[1:6]
 		
 		sample = {'images':images}
 
@@ -273,29 +273,30 @@ class StatisticalNormalization(object):
 
 # 		return {'image': image, 'label': label}
 
-# class ManualNormalization(object):
-# 	"""
-# 	Normalize an image by mapping intensity with given max and min window level
-# 	"""
+class ManualNormalization(object):
+	"""
+	Normalize an image by mapping intensity with given max and min window level
+	"""
 
-# 	def __init__(self,windowMin, windowMax):
-# 		self.name = 'ManualNormalization'
-# 		assert isinstance(windowMax, (int,float))
-# 		assert isinstance(windowMin, (int,float))
-# 		self.windowMax = windowMax
-# 		self.windowMin = windowMin
+	def __init__(self,windowMin, windowMax):
+		self.name = 'ManualNormalization'
+		assert isinstance(windowMax, (int,float))
+		assert isinstance(windowMin, (int,float))
+		self.windowMax = windowMax
+		self.windowMin = windowMin
 
-# 	def __call__(self, sample):
-# 		image, label = sample['image'], sample['label']
-# 		intensityWindowingFilter = sitk.IntensityWindowingImageFilter()
-# 		intensityWindowingFilter.SetOutputMaximum(255)
-# 		intensityWindowingFilter.SetOutputMinimum(0)
-# 		intensityWindowingFilter.SetWindowMaximum(self.windowMax);
-# 		intensityWindowingFilter.SetWindowMinimum(self.windowMin);
+	def __call__(self, sample):
+		images = sample['images']
+		intensityWindowingFilter = sitk.IntensityWindowingImageFilter()
+		intensityWindowingFilter.SetOutputMaximum(255)
+		intensityWindowingFilter.SetOutputMinimum(0)
+		intensityWindowingFilter.SetWindowMaximum(self.windowMax);
+		intensityWindowingFilter.SetWindowMinimum(self.windowMin);
 
-# 		image = intensityWindowingFilter.Execute(image)
+		for channel in range(len(images)):
+			images[channel] = intensityWindowingFilter.Execute(images[channel])
 
-# 		return {'image': image, 'label': label}
+		return {'images': images}
 
 # class Reorient(object):
 # 	"""
@@ -354,12 +355,12 @@ class Resample3D(object):
 			self.voxel_size = voxel_size
 
 	def __call__(self, sample):
-		sources, targets = sample['sources'], sample['targets']
+		images = sample['images']
 
 		resampler = sitk.ResampleImageFilter()
-		for image_channel in range(len(sources)):
-			old_spacing = sources[image_channel].GetSpacing()
-			old_size = sources[image_channel].GetSize()
+		for image_channel in range(len(images)):
+			old_spacing = images[image_channel].GetSpacing()
+			old_size = images[image_channel].GetSize()
 
 			new_spacing = self.voxel_size
 
@@ -372,32 +373,12 @@ class Resample3D(object):
 			resampler.SetSize(new_size)
 
 			# resample on image
-			resampler.SetOutputOrigin(sources[image_channel].GetOrigin())
-			resampler.SetOutputDirection(sources[image_channel].GetDirection())
+			resampler.SetOutputOrigin(images[image_channel].GetOrigin())
+			resampler.SetOutputDirection(images[image_channel].GetDirection())
 			# print("Resampling image...")
-			sources[image_channel] = resampler.Execute(sources[image_channel])
+			images[image_channel] = resampler.Execute(images[image_channel])
 
-		for image_channel in range(len(targets)):
-			old_spacing = targets[image_channel].GetSpacing()
-			old_size = targets[image_channel].GetSize()
-
-			new_spacing = self.voxel_size
-
-			new_size = []
-			for i in range(3):
-				new_size.append(int(math.ceil(old_spacing[i]*old_size[i]/new_spacing[i])))
-			new_size = tuple(new_size)
-			resampler.SetInterpolator(2)
-			resampler.SetOutputSpacing(new_spacing)
-			resampler.SetSize(new_size)
-
-			# resample on image
-			resampler.SetOutputOrigin(targets[image_channel].GetOrigin())
-			resampler.SetOutputDirection(targets[image_channel].GetDirection())
-			# print("Resampling image...")
-			targets[image_channel] = resampler.Execute(targets[image_channel])
-
-		return {'sources': sources, 'targets': targets}
+		return {'images': images}
 
 class Padding3D(object):
 	"""
@@ -405,9 +386,10 @@ class Padding3D(object):
 
 	Args:
 		output_size (tuple or int): Desired output size. If int, a cubic volume is formed
+		center (bool): Padding to center if set true, else pad at corner
 	"""
 
-	def __init__(self, output_size):
+	def __init__(self, output_size, center=True):
 		self.name = 'Padding 3D'
 
 		assert isinstance(output_size, (int, tuple, list))
@@ -419,10 +401,12 @@ class Padding3D(object):
 
 		assert all(i > 0 for i in list(self.output_size))
 
-	def __call__(self,sample):
-		sources, targets = sample['sources'], sample['targets']
+		self.center = center
 
-		size_old = sources[0].GetSize()
+	def __call__(self,sample):
+		images = sample['images']
+
+		size_old = images[0].GetSize()
 
 		if (size_old[0] >= self.output_size[0]) and (size_old[1] >= self.output_size[1]) and (size_old[2] >= self.output_size[2]):
 			return sample
@@ -437,29 +421,28 @@ class Padding3D(object):
 
 			output_size = tuple(output_size)
 
-			for image_channel in range(len(sources)):
+			if self.center:
+				image_center = images[0].TransformIndexToPhysicalPoint([round(images[0].GetSize()[0]/2),round(images[1].GetSize()[1]/2),round(images[2].GetSize()[2]/2)])
+				new_origin = [0,0,0]
+				for i in range(3):
+					new_origin[i] = image_center[i] - output_size[i]/2*images[0].GetSpacing()[i]
+
+			for image_channel in range(len(images)):
 				resampler = sitk.ResampleImageFilter()
-				resampler.SetOutputSpacing(sources[image_channel].GetSpacing())
+				resampler.SetOutputSpacing(images[image_channel].GetSpacing())
 				resampler.SetSize(output_size)
 
 				# resample on image
 				resampler.SetInterpolator(2)
-				resampler.SetOutputOrigin(sources[image_channel].GetOrigin())
-				resampler.SetOutputDirection(sources[image_channel].GetDirection())
-				sources[image_channel] = resampler.Execute(sources[image_channel])
 
-			for image_channel in range(len(targets)):
-				resampler = sitk.ResampleImageFilter()
-				resampler.SetOutputSpacing(targets[image_channel].GetSpacing())
-				resampler.SetSize(output_size)
+				if self.center:
+					resampler.SetOutputOrigin(new_origin)
+				else:
+					resampler.SetOutputOrigin(images[image_channel].GetOrigin())
+				resampler.SetOutputDirection(images[image_channel].GetDirection())
+				images[image_channel] = resampler.Execute(images[image_channel])
 
-				# resample on image
-				resampler.SetInterpolator(2)
-				resampler.SetOutputOrigin(targets[image_channel].GetOrigin())
-				resampler.SetOutputDirection(targets[image_channel].GetDirection())
-				targets[image_channel] = resampler.Execute(targets[image_channel])
-
-			return {'sources': sources, 'targets': targets}
+			return {'images': images}
 
 class RandomCrop3D(object):
 	"""
@@ -480,8 +463,8 @@ class RandomCrop3D(object):
 			self.output_size = output_size
 
 	def __call__(self,sample):
-		sources, targets = sample['sources'], sample['targets']
-		size_old = sources[0].GetSize()
+		images = sample['images']
+		size_old = images[0].GetSize()
 		size_new = self.output_size
 
 		contain_label = False
@@ -506,12 +489,10 @@ class RandomCrop3D(object):
 
 		roiFilter.SetIndex([start_i,start_j,start_k])
 
-		for channel in range(len(sources)):
-			sources[channel] = roiFilter.Execute(sources[channel])
-		for channel in range(len(targets)):
-			targets[channel] = roiFilter.Execute(targets[channel])
+		for channel in range(len(images)):
+			images[channel] = roiFilter.Execute(images[channel])
 
-		return {'sources': sources, 'targets': targets}
+		return {'images': images}
 
 class RandomNoise(object):
 	"""
