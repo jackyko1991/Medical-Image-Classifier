@@ -5,7 +5,7 @@
         "Modality": "CT"
     },
     "Network": {
-        "PatchShape": [128,128,128],
+        "PatchShape": [256,256,256],
         "Name":"ResNet",
         "Dropout":0.1,
         "Spacing": [0.25,0.25,0.25]
@@ -16,11 +16,11 @@
             "TestingDataDirectory": "./data/dataset_no_preprocessing/testing",
             "ImageFilenames": ["image.nii.gz"],
             "LabelFilename":"./data/dataset_no_preprocessing/labels.csv",
-            "ClassNames":["ANY","IPH","SAH","SDH+EDH","IVH"],
+            "ClassNames":["STROKE"],
             "AdditionalFeaturesFilename": "./data/dataset_no_preprocessing/features.csv",
             "AdditionalFeatures": ["Feature1","Feature2"]
         },
-        "BatchSize": 7,
+        "BatchSize": 1,
         "ImageLog": false,
         "Restore": true,
         "LogDir": "./tmp_resnet64/log",

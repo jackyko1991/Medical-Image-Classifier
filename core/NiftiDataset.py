@@ -6,51 +6,9 @@ import math
 import random
 import multiprocessing
 import pandas as pd
+from tqdm import tqdm
 
-class NiftiDataset2D(object):
-	"""
-	"""
-
-	def __init__(self,
-		data_dir = '',
-		source_filenames = [],
-		target_filenames = [],
-		transforms=None,
-		train=False):
-		self.data_dir = data_dir
-		self.source_filenames = source_filenames
-		self.target_filenames = target_filenames
-		self.transforms = transforms
-		self.train = train
-
-	def read_image(self,path):
-		reader = sitk.ImageFileReader()
-		reader.SetFileName(path)
-		return reader.Execute()
-
-	def get_dataset(self):
-		slices_list = []
-		# read all images to generate the candidate slice list
-		for case in os.listdir(self.data_dir):
-			image = self.read_image(os.path.join(self.data_dir,case,self.source_filenames[0]))
-			for i in range(image.GetSize()[2]):
-				slices_list.append({'case':case,'slice':i})
-
-		dataset = tf.data.Dataset.from_tensor_slices(slices_list)
-		dataset = dataset.map(lambda slice_: tuple(tf.py_func(
-			self.input_parser, slice_, [tf.float32,tf.float32])),
-			num_parallel_calls=multiprocessing.cpu_count())
-
-		self.dataset = dataset
-		self.data_size = len(source_paths)
-		return self.dataset
-
-	def input_parser(self,slice_):
-		# read source and target images
-		source_images = []
-		target_images = []
-
-class NiftiDataset3D(object):
+class NiftiDataset(object):
 	"""
 	load image-label pair for training, testing and inference.
 	Currently only support linear interpolation method
@@ -60,30 +18,41 @@ class NiftiDataset3D(object):
 		target_filename (string): Filename of target image data.
 		transforms (list): List of SimpleITK image transformations.
 		train (bool): Determine whether the dataset class run in training/inference mode. When set to false, an empty label with same metadata as image is generated.
+		dim (int): Dimension of training data, must be 2 or 3
 	"""
 
 	def __init__(self,
 		data_dir = '',
 		image_filenames = [],
 		label_filename = 'label.csv',
+		case_column_name = "case",
 		class_names = [],
+		additional_features_filename = None,
+		additional_features = [],
 		transforms=None,
-		train=False,):
+		train=False):
 
 		# Init membership variables
 		self.data_dir = data_dir
 		self.image_filenames = image_filenames
 		self.label_filename = label_filename
 		self.class_names = class_names
+		self.additional_features_filename = additional_features_filename
+		self.additional_features = additional_features
 		self.transforms = transforms
 		self.train = train
 		self.label_df = None
+		self.case_column_name = case_column_name
 
 	def get_dataset(self):
 		image_dirs = []
 
 		# read labels from csv file
 		self.label_df = pd.read_csv(self.label_filename)
+
+		# read additional features from csv file
+		if self.additional_features_filename is not None:
+			self.additional_features_df = pd.read_csv(self.additional_features_filename)
 
 		dataset = tf.data.Dataset.from_tensor_slices(os.listdir(self.data_dir))
 		dataset = dataset.map(lambda case: tuple(tf.py_func(
@@ -118,16 +87,22 @@ class NiftiDataset3D(object):
 			sameSpacing = images[channel].GetSpacing() == images[0].GetSpacing()
 			sameDirection = images[channel].GetDirection() == images[0].GetDirection()
 
-			if sameSize and sameSpacing and sameDirection:
-				continue
-			else:
-				raise Exception('Header info inconsistent: {}'.format(image_paths[channel]))
-				exit()
+			# if sameSize and sameSpacing and sameDirection:
+			# 	continue
+			# else:
+			# 	raise Exception('Header info inconsistent: {} \n \
+			# 		Same Size:{}, \nSame Spacing:{}, \nSame Direction:{}'.
+			# 		format(os.path.join(self.data_dir,case),str(sameSize),str(sameSpacing),str(sameDirection)))
+			# 	exit()
 
 		# get the associate label
-		# need to modify to access data by header
-		label = self.label_df.loc[self.label_df['Case no.']==case].iloc[0].values.tolist()[1:6]
-		
+		label = self.label_df.loc[self.label_df[self.case_column_name]==case].iloc[0][self.class_names].values
+		label = label.astype(np.int64)
+
+		# get the additional features
+		if self.additional_features_filename is not None:
+			additional_features = self.additional_features_df.loc[self.additional_features_df[self.case_column_name]==case].iloc[0].values.tolist()
+
 		sample = {'images':images}
 
 		if self.transforms:
@@ -142,12 +117,19 @@ class NiftiDataset3D(object):
 		for channel in range(len(sample['images'])):
 			images_np_ = sitk.GetArrayFromImage(sample['images'][channel])
 			images_np_ = np.asarray(images_np_,np.float32)
-			# to unify matrix dimension order between SimpleITK([x,y,z]) and numpy([z,y,x])
-			images_np_ = np.transpose(images_np_,(2,1,0))
-			if channel == 0:
-				images_np = images_np_[:,:,:,np.newaxis]
-			else:
-				images_np = np.append(images_np,images_np_[:,:,:,np.newaxis],axis=-1)
+
+			if len(images_np_.shape)==2:
+				if channel == 0:
+					images_np = images_np_[:,:,np.newaxis]
+				else:
+					images_np = np.append(images_np,images_np_[:,:,np.newaxis],axis=-1)
+			elif len(images_np_.shape)==3:
+				# to unify matrix dimension order between SimpleITK([x,y,z]) and numpy([z,y,x])
+				images_np_ = np.transpose(images_np_,(2,1,0))
+				if channel == 0:
+					images_np = images_np_[:,:,:,np.newaxis]
+				else:
+					images_np = np.append(images_np,images_np_[:,:,:,np.newaxis],axis=-1)
 
 		return images_np, label
 
@@ -170,6 +152,38 @@ class Normalization(object):
 
 		for channel in range(len(images)):
 			images[channel] = resacleFilter.Execute(images[channel])
+
+		return {'images': images}
+
+class StatisticalNormalization(object):
+	"""
+	Normalize an image by mapping intensity with intensity distribution
+	"""
+
+	def __init__(self, sigma, pre_norm=False):
+		self.name = 'StatisticalNormalization'
+		assert isinstance(sigma, float)
+		self.sigma = sigma
+		self.pre_norm=pre_norm
+
+	def __call__(self, sample):
+		images = sample['images']
+
+		for image_channel in range(len(image)):
+			if self.pre_norm:
+				normalFilter= sitk.NormalizeImageFilter()
+				image[image_channel] = normalFilter.Execute(image[image_channel])
+
+			statisticsFilter = sitk.StatisticsImageFilter()
+			statisticsFilter.Execute(image[image_channel])
+
+			intensityWindowingFilter = sitk.IntensityWindowingImageFilter()
+			intensityWindowingFilter.SetOutputMaximum(255)
+			intensityWindowingFilter.SetOutputMinimum(0)
+			intensityWindowingFilter.SetWindowMaximum(statisticsFilter.GetMean()+self.sigma*statisticsFilter.GetSigma());
+			intensityWindowingFilter.SetWindowMinimum(statisticsFilter.GetMean()-self.sigma*statisticsFilter.GetSigma());
+
+			image[image_channel] = intensityWindowingFilter.Execute(image[image_channel])
 
 		return {'images': images}
 
@@ -208,15 +222,15 @@ class StatisticalNormalization(object):
 		self.pre_norm=pre_norm
 
 	def __call__(self, sample):
-		sources, targets = sample['sources'], sample['targets']
+		images = sample['images']
 
-		for channel in range(len(sources)):
+		for channel in range(len(images)):
 			if self.pre_norm:
 				normalFilter= sitk.NormalizeImageFilter()
-				sources[channel] = normalFilter.Execute(sources[channel])
+				images[channel] = normalFilter.Execute(images[channel])
 
 			statisticsFilter = sitk.StatisticsImageFilter()
-			statisticsFilter.Execute(sources[channel])
+			statisticsFilter.Execute(images[channel])
 
 			intensityWindowingFilter = sitk.IntensityWindowingImageFilter()
 			intensityWindowingFilter.SetOutputMaximum(255)
@@ -224,25 +238,9 @@ class StatisticalNormalization(object):
 			intensityWindowingFilter.SetWindowMaximum(statisticsFilter.GetMean()+self.sigma*statisticsFilter.GetSigma());
 			intensityWindowingFilter.SetWindowMinimum(statisticsFilter.GetMean()-self.sigma*statisticsFilter.GetSigma());
 
-			sources[channel] = intensityWindowingFilter.Execute(sources[channel])
+			images[channel] = intensityWindowingFilter.Execute(images[channel])
 
-		for channel in range(len(targets)):
-			if self.pre_norm:
-				normalFilter= sitk.NormalizeImageFilter()
-				targets[channel] = normalFilter.Execute(targets[channel])
-
-			statisticsFilter = sitk.StatisticsImageFilter()
-			statisticsFilter.Execute(targets[channel])
-
-			intensityWindowingFilter = sitk.IntensityWindowingImageFilter()
-			intensityWindowingFilter.SetOutputMaximum(255)
-			intensityWindowingFilter.SetOutputMinimum(0)
-			intensityWindowingFilter.SetWindowMaximum(statisticsFilter.GetMean()+self.sigma*statisticsFilter.GetSigma());
-			intensityWindowingFilter.SetWindowMinimum(statisticsFilter.GetMean()-self.sigma*statisticsFilter.GetSigma());
-
-			targets[channel] = intensityWindowingFilter.Execute(targets[channel])
-
-		return {'sources': sources, 'targets': targets}
+		return {'images': images}
 
 # class ExtremumNormalization(object):
 # 	"""
@@ -333,6 +331,87 @@ class ManualNormalization(object):
 
 # 		return {'image': image, 'label': label}
 
+class RandomRotate2D(object):
+	"""
+	Randomly rotate the input image
+	"""
+
+	def __init__(self):
+		self.name = "Random Rotate"
+
+	def __call__(self,sample):
+		images = sample['images']
+
+		transform = sitk.Euler2DTransform()
+		transform.SetMatrix(images[0].GetDirection())
+
+		center = [0,0]
+		center[0] = images[0].GetOrigin()[0] + images[0].GetSpacing()[0]*images[0].GetSize()[0]/2
+		center[1] = images[0].GetOrigin()[1] + images[0].GetSpacing()[1]*images[0].GetSize()[1]/2
+
+		transform.SetCenter(tuple(center))
+		ang_degree = random.randint(0,180)*1.0
+		transform.SetAngle(ang_degree/180.0*math.pi)
+
+		resample = sitk.ResampleImageFilter()
+		resample.SetReferenceImage(images[0])
+		resample.SetSize([images[0].GetSize()[0],images[0].GetSize()[1]])
+		resample.SetOutputDirection(images[0].GetDirection())
+		resample.SetInterpolator(sitk.sitkLinear)
+		resample.SetTransform(transform)
+
+		for image_channel in range(len(images)):
+			images[image_channel] = resample.Execute(images[image_channel])
+
+		return {'images': images}
+
+class Resample2D(object):
+	"""
+	Resample the volume in a sample to a given voxel size
+
+	Args:
+		voxel_size (float or tuple): Desired output size.
+		If float, output volume is isotropic.
+		If tuple, output voxel size is matched with voxel size
+		Currently only support linear interpolation method
+	"""
+
+	def __init__(self, voxel_size):
+		self.name = 'Resample 2D'
+
+		assert isinstance(voxel_size, (int, float, tuple, list))
+		if isinstance(voxel_size, (int, float)):
+			self.voxel_size = (voxel_size, voxel_size)
+		else:
+			assert len(voxel_size) == 2
+			self.voxel_size = voxel_size
+
+	def __call__(self, sample):
+		images = sample['images']
+
+		resampler = sitk.ResampleImageFilter()
+		for image_channel in range(len(images)):
+			old_spacing = images[image_channel].GetSpacing()
+			old_size = images[image_channel].GetSize()
+
+			new_spacing = self.voxel_size
+
+			new_size = []
+			for i in range(2):
+				new_size.append(int(math.ceil(old_spacing[i]*old_size[i]/new_spacing[i])))
+			new_size = tuple(new_size)
+			resampler.SetInterpolator(2)
+			resampler.SetOutputSpacing(new_spacing)
+			resampler.SetSize(new_size)
+
+			# resample on image
+			resampler.SetOutputOrigin(images[image_channel].GetOrigin())
+			resampler.SetOutputDirection(images[image_channel].GetDirection())
+			# print("Resampling image...")
+			images[image_channel] = resampler.Execute(images[image_channel])
+
+		return {'images': images}
+
 class Resample3D(object):
 	"""
 	Resample the volume in a sample to a given voxel size
@@ -379,6 +458,68 @@ class Resample3D(object):
 			images[image_channel] = resampler.Execute(images[image_channel])
 
 		return {'images': images}
+
+class Padding2D(object):
+	"""
+	Add padding to the image if size is smaller than patch size
+
+	Args:
+		output_size (tuple or int): Desired output size. If int, a cubic volume is formed
+		center (bool): Padding to center if set true, else pad at corner
+	"""
+
+	def __init__(self, output_size, center=True):
+		self.name = 'Padding 2D'
+
+		assert isinstance(output_size, (int, tuple, list))
+		if isinstance(output_size, int):
+			self.output_size = (output_size, output_size)
+		else:
+			assert len(output_size) == 2
+			self.output_size = output_size
+
+		assert all(i > 0 for i in list(self.output_size))
+
+		self.center = center
+
+	def __call__(self,sample):
+		images = sample['images']
+
+		size_old = images[0].GetSize()
+
+		if (size_old[0] >= self.output_size[0]) and (size_old[1] >= self.output_size[1]):
+			return sample
+		else:
+			output_size = list(self.output_size)
+			if size_old[0] > self.output_size[0]:
+				output_size[0] = size_old[0]
+			if size_old[1] > self.output_size[1]:
+				output_size[1] = size_old[1]
+
+			output_size = tuple(output_size)
+
+			if self.center:
+				image_center = images[0].TransformIndexToPhysicalPoint([round(images[0].GetSize()[0]/2),round(images[0].GetSize()[1]/2)])
+				new_origin = [0,0]
+				for i in range(2):
+					new_origin[i] = image_center[i] - output_size[i]/2*images[0].GetSpacing()[i]
+
+			for image_channel in range(len(images)):
+				resampler = sitk.ResampleImageFilter()
+				resampler.SetOutputSpacing(images[image_channel].GetSpacing())
+				resampler.SetSize(output_size)
+
+				# resample on image
+				resampler.SetInterpolator(2)
+
+				if self.center:
+					resampler.SetOutputOrigin(new_origin)
+				else:
+					resampler.SetOutputOrigin(images[image_channel].GetOrigin())
+				resampler.SetOutputDirection(images[image_channel].GetDirection())
+				images[image_channel] = resampler.Execute(images[image_channel])
+
+			return {'images': images}
 
 class Padding3D(object):
 	"""
@@ -443,6 +584,51 @@ class Padding3D(object):
 				images[image_channel] = resampler.Execute(images[image_channel])
 
 			return {'images': images}
+
+class RandomCrop2D(object):
+	"""
+	Crop the 2D image randomly in a sample. This is usually used for data augmentation.
+
+	Args:
+	output_size (tuple or int): Desired output size. If int, cubic crop is made.
+	"""
+
+	def __init__(self, output_size):
+		self.name = 'Random Crop 2D'
+
+		assert isinstance(output_size, (int, tuple, list))
+		if isinstance(output_size, int):
+			self.output_size = (output_size, output_size)
+		else:
+			assert len(output_size) == 2
+			self.output_size = output_size
+
+	def __call__(self,sample):
+		images = sample['images']
+		size_old = images[0].GetSize()
+		size_new = self.output_size
+
+		contain_label = False
+
+		roiFilter = sitk.RegionOfInterestImageFilter()
+		roiFilter.SetSize([size_new[0],size_new[1]])
+
+		if size_old[0] <= size_new[0]:
+			start_i = 0
+		else:
+			start_i = np.random.randint(0, size_old[0]-size_new[0])
+
+		if size_old[1] <= size_new[1]:
+			start_j = 0
+		else:
+			start_j = np.random.randint(0, size_old[1]-size_new[1])
+
+		roiFilter.SetIndex([start_i,start_j])
+
+		for channel in range(len(images)):
+			images[channel] = roiFilter.Execute(images[channel])
+
+		return {'images': images}
 
 class RandomCrop3D(object):
 	"""
@@ -513,6 +699,23 @@ class RandomNoise(object):
 			images[image_channel] = self.noiseFilter.Execute(images[image_channel])		
 
 		return {'images': images}
+
+class MaximumIntensityProjection(object):
+	"""
+	Perform maximum intensity projection and stack output in channel
+	"""
+	def __init__(self, axises=[0,1,2]):
+		self.name = "MaximumIntensityProjection"
+		self.axises = axises
+
+	def __call__(self, sample):
+		images = sample['images']
+
+		for image_channel in range(len(images)):
+			for axis in self.axises:
+				return
+
+
 
 # class ConfidenceCrop(object):
 # 	"""

@@ -57,6 +57,7 @@ class MedicalImageClassifier(object):
 
 		# additional features
 		if ('AdditionalFeaturesFilename' in self.config["TrainingSetting"]['Data']) and ('AdditionalFeatures' in self.config["TrainingSetting"]['Data']):
+			self.additional_features_filename = self.config["TrainingSetting"]['Data']
 			self.additional_features = self.config["TrainingSetting"]['Data']['AdditionalFeatures']
 			self.additional_features_num = len(self.config["TrainingSetting"]['Data']['AdditionalFeatures'])
 		else:
@@ -94,20 +95,30 @@ class MedicalImageClassifier(object):
 	def dataset_iterator(self,data_dir,transforms,train=True):
 		# Force input pipepline to CPU:0 to avoid operations sometimes ended up at GPU and resulting a slow down
 		with tf.device('/cpu:0'):
-			if self.dimension==2:
-				Dataset = NiftiDataset.NiftiDataset2D()
-				sys.exit('2D image pipeline under development')
-			else:
-				Dataset = NiftiDataset.NiftiDataset3D(
+			if self.additional_features_num == 0:
+				Dataset = NiftiDataset.NiftiDataset(
 					data_dir=data_dir,
 					image_filenames=self.image_filenames,
 					label_filename=self.label_filename,
+					case_column_name = "case",
 					class_names=self.class_names,
 					transforms=transforms,
-					train=train,
+					train=train
+					)
+			else:
+				Dataset = NiftiDataset.NiftiDataset(
+					data_dir=data_dir,
+					image_filenames=self.image_filenames,
+					label_filename=self.label_filename,
+					case_column_name = "case",
+					class_names=self.class_names,
+					additional_features_filename = self.additional_features_filename,
+					additional_features = self.additional_features,
+					transforms=transforms,
+					train=train
 					)
 			dataset = Dataset.get_dataset()
-			dataset = dataset.shuffle(buffer_size=5)
+			dataset = dataset.shuffle(buffer_size=20)
 			dataset = dataset.batch(self.batch_size,drop_remainder=False)
 
 		return dataset.make_initializable_iterator()
@@ -128,20 +139,25 @@ class MedicalImageClassifier(object):
 		self.input_placeholder = tf.placeholder(tf.float32, input_batch_shape)
 		self.output_placeholder = tf.placeholder(tf.float32, output_batch_shape)
 
+		# placeholder for additional features
+		if self.additional_features_num > 0:
+			additional_batch_shape = (None, self.additional_features_num)
+			self.additional_features_placeholder = tf.placeholder(tf.float32,additional_batch_shape)
+
 		# plot input and output images to tensorboard
 		if self.image_log:
-			for batch in range(self.batch_size):
+			if len(self.patch_shape)==2:
 				for input_channel in range(self.input_channel_num):
-					if self.patch_shape==2:
-						image_log = tf.cast(self.input_placeholder[batch:batch+1,:,:,input_channel], dtype=tf.uint8)
-						tf.summary.image(self.image_filenames[input_channel],image_log, max_outputs=self.batch_size)
-					else:
+					image_log = tf.cast(self.input_placeholder[:,:,:,input_channel:input_channel+1], dtype=tf.uint8)
+					tf.summary.image(self.image_filenames[input_channel],image_log, max_outputs=self.batch_size)
+			else:
+				for batch in range(self.batch_size):
+					for input_channel in range(self.input_channel_num):
 						image_log = tf.cast(self.input_placeholder[batch:batch+1,:,:,:,input_channel], dtype=tf.uint8)
 						tf.summary.image(self.image_filenames[input_channel],tf.transpose(image_log,[3,1,2,0]), max_outputs=self.patch_shape[-1])
 
 		# training and testing augmentation pipeline
 		self.train_transforms = transforms.train_transforms(self.spacing, self.patch_shape)
-
 		self.test_transforms = transforms.test_transforms(self.spacing, self.patch_shape)
 
 		#  get input and output datasets
@@ -155,12 +171,20 @@ class MedicalImageClassifier(object):
 		# network models
 		print("{}: Network: {}".format(datetime.datetime.now(),self.network_name))
 		if self.network_name == "LeNet":
-			self.network = networks.Lenet3D(
-			num_classes=self.output_channel_num,
-			is_training=True,
-			activation_fn="relu",
-			keep_prob=1.0
-			)
+			if self.dimension == 2:
+				self.network = networks.Lenet2D(
+					num_classes=self.output_channel_num,
+					is_training=True,
+					activation_fn="relu",
+					keep_prob=1.0
+					)
+			else:	
+				self.network = networks.Lenet3D(
+					num_classes=self.output_channel_num,
+					is_training=True,
+					activation_fn="relu",
+					keep_prob=1.0
+					)
 		elif self.network_name == "AlexNet":
 			self.network = networks.Alexnet3D(
 				num_classes=self.output_channel_num,
@@ -168,20 +192,36 @@ class MedicalImageClassifier(object):
 				activation_fn="relu",
 				keep_prob=1.0)
 		elif self.network_name == "ResNet":
-			self.network = networks.Resnet3D(
-				num_classes=self.output_channel_num,
-				num_channels=64,
-				is_training=True,
-				activation_fn="relu",
-				keep_prob=1.0,
-				init_conv_shape=5,
-				init_pool=True,
-				module_config=[2,2,2])
+			if self.dimension == 2:
+				self.network = networks.Resnet2D(
+					num_classes=self.output_channel_num,
+					num_channels=64,
+					is_training=True,
+					activation_fn="relu",
+					keep_prob=1.0,
+					init_conv_shape=5,
+					init_pool=True,
+					module_config=[2,2,2])
+			else:
+				self.network = networks.Resnet3D(
+					num_classes=self.output_channel_num,
+					num_channels=64,
+					is_training=True,
+					activation_fn="relu",
+					keep_prob=1.0,
+					init_conv_shape=5,
+					init_pool=True,
+					module_config=[2,2,2])
 		else:
 			sys.exit('Invalid Network')
 
 		self.logits_op = self.network.GetNetwork(self.input_placeholder)
 		self.logits_op = tf.reshape(self.logits_op, [-1,self.output_channel_num])
+
+		if self.additional_features_num > 0:
+			dense0 = tf.concat([tf.nn.relu(self.logits_op),self.additional_features_placeholder],axis=1)
+			dense1 = tf.layers.dense(inputs=dense1,units=500, activation=self.activation_fn)
+			self.logits_additional_features_op = tf.layers.dense(inputs=dense1,units=self.num_classes, activation=None)
 
 		self.loss_op = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.logits_op,labels=self.output_placeholder),0)
 		self.avg_loss_op = tf.reduce_mean(self.loss_op)
@@ -354,9 +394,9 @@ class MedicalImageClassifier(object):
 						feed_dict={self.input_placeholder: images, self.output_placeholder: label})
 					print("{}: loss: {}".format(datetime.datetime.now(),loss))
 					# print("{}: accuracy: {}".format(datetime.datetime.now(),accuracy))
-					print("{}: ground truth: {}".format(datetime.datetime.now(),label))
-					print("{}: result: {}".format(datetime.datetime.now(),result))
-					print("{}: sigmoid: {}".format(datetime.datetime.now(),sigmoid))
+					print("{}: ground truth: {}".format(datetime.datetime.now(),label[:5]))
+					print("{}: result: {}".format(datetime.datetime.now(),result[:5]))
+					print("{}: sigmoid: {}".format(datetime.datetime.now(),sigmoid[:5]))
 
 					# perform summary log after training op
 					summary = self.sess.run(summary_op,feed_dict={
@@ -403,9 +443,9 @@ class MedicalImageClassifier(object):
 							feed_dict={self.input_placeholder: images, self.output_placeholder: label})
 						print("{}: loss: {}".format(datetime.datetime.now(),loss))
 						# print("{}: accuracy: {}".format(datetime.datetime.now(),accuracy))
-						print("{}: ground truth: {}".format(datetime.datetime.now(),label))
-						print("{}: result: {}".format(datetime.datetime.now(),result))
-						print("{}: sigmoid: {}".format(datetime.datetime.now(),sigmoid))
+						print("{}: ground truth: {}".format(datetime.datetime.now(),label[:5]))
+						print("{}: result: {}".format(datetime.datetime.now(),result[:5]))
+						print("{}: sigmoid: {}".format(datetime.datetime.now(),sigmoid[:5]))
 
 						test_summary_writer.add_summary(summary, global_step=tf.train.global_step(self.sess, self.global_step))
 						test_summary_writer.flush()
