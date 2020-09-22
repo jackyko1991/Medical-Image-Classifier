@@ -3,10 +3,11 @@ from core import NiftiDataset
 def train_transforms2D(spacing,patch_shape):
 	transforms2D = [
 		NiftiDataset.StatisticalNormalization(2.5),
-		NiftiDataset.RandomRotate2D(),
+		NiftiDataset.RandomFlip([True,False]),
 		NiftiDataset.Resample2D(spacing),
 		NiftiDataset.Padding2D(patch_shape),
 		NiftiDataset.RandomCrop2D(patch_shape),
+		NiftiDataset.RandomRotate2D(),
 		NiftiDataset.RandomNoise()
 	]
 
@@ -21,10 +22,10 @@ def train_transforms3D(spacing, patch_shape):
 		# NiftiDataset.Normalization(),
 		# NiftiDataset.ManualNormalization(0,75),
 		NiftiDataset.StatisticalNormalization(2.5),
-		NiftiDataset.RandomRotate3D(),
 		NiftiDataset.Resample3D(spacing),
 		NiftiDataset.Padding3D(patch_shape),
 		NiftiDataset.RandomCrop3D(patch_shape),
+		NiftiDataset.RandomRotate3D(),
 		NiftiDataset.RandomNoise()
 		]
 

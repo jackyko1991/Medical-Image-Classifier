@@ -121,7 +121,7 @@ class MedicalImageClassifier(object):
 			if self.dimension == 2:
 				dataset = dataset.shuffle(buffer_size=20)
 			else:
-				dataset = dataset.shuffle(buffer_size=3)
+				dataset = dataset.shuffle(buffer_size=10)
 			dataset = dataset.batch(self.batch_size,drop_remainder=False)
 
 		return dataset.make_initializable_iterator()

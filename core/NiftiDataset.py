@@ -187,28 +187,27 @@ class StatisticalNormalization(object):
 
 		return {'images': images}
 
-# class RandomFlip(object):
-# 	"""
-# 	Randomly Flip image by user specified axes
-# 	"""
+class RandomFlip(object):
+	"""
+	Randomly Flip image by user specified axes
+	"""
 
-# 	def __init__(self, axes):
-# 		self.name = 'Flip'
-# 		assert len(axes)>0 and len(axes)<=3
-# 		self.axes = axes
+	def __init__(self, axes=[False,False]):
+		self.name = 'Random Flip'
+		assert len(axes)>0 and len(axes)<=3
+		self.axes = axes
 
-# 	def __call__(self, sample):
-# 		image, label = sample['image'], sample['label']
+	def __call__(self, sample):
+		images = sample['images']
 
-# 		flip = np.random.randint(2, size=1)[0]
-# 		if flip:
-# 			flipFilter = sitk.FlipImageFilter()
-# 			for image_channel in range(len(image)):
-# 				flipFilter.SetFlipAxes(self.axes)
-# 				image[image_channel] = flipFilter.Execute(image[image_channel])
-# 			label = flipFilter.Execute(label)
+		flip = np.random.randint(2, size=1)[0]
+		if flip:
+			flipFilter = sitk.FlipImageFilter()
+			for image_channel in range(len(images)):
+				flipFilter.SetFlipAxes(self.axes)
+				images[image_channel] = flipFilter.Execute(images[image_channel])
 
-# 		return {'image': image, 'label': label}
+		return {'images': images}
 
 class StatisticalNormalization(object):
 	"""
