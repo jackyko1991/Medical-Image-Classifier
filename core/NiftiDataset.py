@@ -337,7 +337,7 @@ class RandomRotate2D(object):
 	"""
 
 	def __init__(self):
-		self.name = "Random Rotate"
+		self.name = "Random Rotate 2D"
 
 	def __call__(self,sample):
 		images = sample['images']
@@ -356,6 +356,44 @@ class RandomRotate2D(object):
 		resample = sitk.ResampleImageFilter()
 		resample.SetReferenceImage(images[0])
 		resample.SetSize([images[0].GetSize()[0],images[0].GetSize()[1]])
+		resample.SetOutputDirection(images[0].GetDirection())
+		resample.SetInterpolator(sitk.sitkLinear)
+		resample.SetTransform(transform)
+
+		for image_channel in range(len(images)):
+			images[image_channel] = resample.Execute(images[image_channel])
+
+		return {'images': images}
+
+class RandomRotate3D(object):
+	"""
+	Randomly rotate the input image in 3D
+	"""
+
+	def __init__(self):
+		self.name = "Random Rotate 3D"
+
+	def __call__(self,sample):
+		images = sample['images']
+
+		transform = sitk.Euler3DTransform()
+		transform.SetMatrix(images[0].GetDirection())
+
+		center = [0,0,0]
+		center[0] = images[0].GetOrigin()[0] + images[0].GetSpacing()[0]*images[0].GetSize()[0]/2
+		center[1] = images[0].GetOrigin()[1] + images[0].GetSpacing()[1]*images[0].GetSize()[1]/2
+		center[2] = images[0].GetOrigin()[2] + images[0].GetSpacing()[2]*images[0].GetSize()[2]/2
+
+		transform.SetCenter(tuple(center))
+		angX_degree = random.randint(0,180)*1.0
+		angY_degree = random.randint(0,180)*1.0
+		angZ_degree = random.randint(0,180)*1.0
+
+		transform.SetRotation(angX_degree/180.0*math.pi,angY_degree/180.0*math.pi,angZ_degree/180.0*math.pi)
+
+		resample = sitk.ResampleImageFilter()
+		resample.SetReferenceImage(images[0])
+		resample.SetSize([images[0].GetSize()[0],images[0].GetSize()[1],images[0].GetSize()[2]])
 		resample.SetOutputDirection(images[0].GetDirection())
 		resample.SetInterpolator(sitk.sitkLinear)
 		resample.SetTransform(transform)
@@ -563,7 +601,7 @@ class Padding3D(object):
 			output_size = tuple(output_size)
 
 			if self.center:
-				image_center = images[0].TransformIndexToPhysicalPoint([round(images[0].GetSize()[0]/2),round(images[1].GetSize()[1]/2),round(images[2].GetSize()[2]/2)])
+				image_center = images[0].TransformIndexToPhysicalPoint([round(images[0].GetSize()[0]/2),round(images[0].GetSize()[1]/2),round(images[0].GetSize()[2]/2)])
 				new_origin = [0,0,0]
 				for i in range(3):
 					new_origin[i] = image_center[i] - output_size[i]/2*images[0].GetSpacing()[i]

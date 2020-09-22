@@ -21,6 +21,7 @@ def train_transforms3D(spacing, patch_shape):
 		# NiftiDataset.Normalization(),
 		# NiftiDataset.ManualNormalization(0,75),
 		NiftiDataset.StatisticalNormalization(2.5),
+		NiftiDataset.RandomRotate3D(),
 		NiftiDataset.Resample3D(spacing),
 		NiftiDataset.Padding3D(patch_shape),
 		NiftiDataset.RandomCrop3D(patch_shape),
