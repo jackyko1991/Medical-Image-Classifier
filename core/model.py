@@ -189,11 +189,50 @@ class MedicalImageClassifier(object):
 					keep_prob=1.0
 					)
 		elif self.network_name == "AlexNet":
-			self.network = networks.Alexnet3D(
-				num_classes=self.output_channel_num,
-				is_training=True,
-				activation_fn="relu",
-				keep_prob=1.0)
+			if self.dimension == 2:
+				self.network = networks.Alexnet2D(
+					num_classes=self.output_channel_num,
+					is_training=True,
+					activation_fn="relu",
+					keep_prob=1.0)
+			else:
+				self.network = networks.Alexnet3D(
+					num_classes=self.output_channel_num,
+					is_training=True,
+					activation_fn="relu",
+					keep_prob=1.0)
+		elif "GoogLeNet" in self.network_name:
+			if self.dimension == 2:
+				self.network = networks.GoogLeNet2D(
+					num_classes=self.output_channel_num,
+					is_training=True,
+					activation_fn="relu",
+					keep_prob=1.0,
+					version=int(self.network_name[-1])
+					)
+			else:
+				exit()
+		elif self.network_name == "Vgg":
+			if self.dimension == 2:
+				self.network = networks.Vgg2d(
+					num_classes=self.output_channel_num,
+					num_channels=64,
+					is_training=True,
+					activation_fn="relu",
+					keep_prob=1.0,
+					module_config=[2,2,3,3,3],
+					batch_norm_momentum=0.99,
+					fc_channels=[4096,4096])
+			else:
+				self.network = networks.Vgg3d(
+					num_classes=self.output_channel_num,
+					num_channels=64,
+					is_training=True,
+					activation_fn="relu",
+					keep_prob=1.0,
+					module_config=[2,2,3,3,3],
+					batch_norm_momentum=0.99,
+					fc_channels=[4096,4096])
 		elif self.network_name == "ResNet":
 			if self.dimension == 2:
 				self.network = networks.Resnet2D(
@@ -358,14 +397,16 @@ class MedicalImageClassifier(object):
 		if self.testing:
 			test_summary_writer = tf.summary.FileWriter(self.log_dir + '/test', self.sess.graph)
 
+		# testing initializer need to execute outside training loop
+		if self.testing:
+			self.sess.run(self.test_iterator.initializer)
+
 		# loop over epochs
 		for epoch in np.arange(start_epoch.eval(session=self.sess),self.epoches):
 			print("{}: Epoch {} starts...".format(datetime.datetime.now(),epoch+1))
 
 			# initialize iterator in each new epoch
 			self.sess.run(self.train_iterator.initializer)
-			if self.testing:
-				self.sess.run(self.test_iterator.initializer)
 
 			# training phase
 			while True:
@@ -384,7 +425,6 @@ class MedicalImageClassifier(object):
 						# label = np.concatenate((label,label_zero_pads))
 						if self.dimension == 2:
 							images = np.tile(images,(math.ceil(self.batch_size/images.shape[0]),1,1,1))
-							images = images[:self.batch_size,]
 						else:
 							images = np.tile(images,(math.ceil(self.batch_size/images.shape[0]),1,1,1,1))
 						label = np.tile(label,(math.ceil(self.batch_size/label.shape[0]),1))
@@ -395,7 +435,7 @@ class MedicalImageClassifier(object):
 					sigmoid, loss, result, accuracy, train = self.sess.run(
 						[self.sigmoid_op,self.avg_loss_op, self.result_op, self.acc_op, train_op], 
 						feed_dict={self.input_placeholder: images, self.output_placeholder: label})
-					print("{}: loss: {}".format(datetime.datetime.now(),loss))
+					print("{}: Training loss: {}".format(datetime.datetime.now(),loss))
 					# print("{}: accuracy: {}".format(datetime.datetime.now(),accuracy))
 					print("{}: ground truth: {}".format(datetime.datetime.now(),label[:5]))
 					print("{}: result: {}".format(datetime.datetime.now(),result[:5]))
@@ -410,41 +450,49 @@ class MedicalImageClassifier(object):
 					train_summary_writer.add_summary(summary,global_step=tf.train.global_step(self.sess,self.global_step))
 					train_summary_writer.flush()
 
+					# save checkpoint
+					if self.global_step.eval()%self.log_interval == 0:
+						print("{}: Saving checkpoint of step {} at {}...".format(datetime.datetime.now(),self.global_step.eval(),self.ckpt_dir))
+						if not (os.path.exists(self.ckpt_dir)):
+							os.makedirs(self.ckpt_dir,exist_ok=True)
+						saver.save(self.sess, checkpoint_prefix, 
+							global_step=tf.train.global_step(self.sess, self.global_step),
+							latest_filename="checkpoint-latest")
+
 					# testing phase
 					if self.testing and (self.global_step.eval()%self.testing_step_interval == 0):
 						self.network.is_training = False
 
 						try:
-							image, label = self.sess.run(self.next_element_test)
+							images, label = self.sess.run(self.next_element_test)
 						except tf.errors.OutOfRangeError:
 							self.sess.run(self.test_iterator.initializer)
-							image, label = self.sess.run(self.next_element_test)
+							images, label = self.sess.run(self.next_element_test)
 							
-						# if images.shape[0] < self.batch_size:
-						# 	if self.dimension == 2:
-						# 		images_zero_pads = np.zeros((self.batch_size-images.shape[0],images.shape[1],images.shape[2],images.shape[3]))
-						# 		label_zero_pads = np.zeros((self.batch_size-label.shape[0],images.shape[1]))
-						# 	else:
-						# 		images_zero_pads = np.zeros((self.batch_size-images.shape[0],images.shape[1],images.shape[2],images.shape[3],images.shape[4]))
-							
-						# label_zero_pads = np.zeros((self.batch_size-label.shape[0],label.shape[1]))
-		 				# images = np.concatenate((images,images_zero_pads))
-						# label = np.concatenate((label,label_zero_pads))
-
-						if self.dimension == 2:
-							images = np.tile(images,(math.ceil(self.batch_size/images.shape[0]),1,1,1))
-							images = images[:self.batch_size,]
-						else:
-							images = np.tile(images,(math.ceil(self.batch_size/images.shape[0]),1,1,1,1))
-							label = np.tile(label,(math.ceil(self.batch_size/label.shape[0]),1))
+						if images.shape[0] < self.batch_size:
+							# 	if self.dimension == 2:
+							# 		images_zero_pads = np.zeros((self.batch_size-images.shape[0],images.shape[1],images.shape[2],images.shape[3]))
+							# 		label_zero_pads = np.zeros((self.batch_size-label.shape[0],images.shape[1]))
+							# 	else:
+							# 		images_zero_pads = np.zeros((self.batch_size-images.shape[0],images.shape[1],images.shape[2],images.shape[3],images.shape[4]))
 								
-						images = images[:self.batch_size,]
-						label = label[:self.batch_size,]
+							# label_zero_pads = np.zeros((self.batch_size-label.shape[0],label.shape[1]))
+			 				# images = np.concatenate((images,images_zero_pads))
+							# label = np.concatenate((label,label_zero_pads))
+
+							if self.dimension == 2:
+								images = np.tile(images,(math.ceil(self.batch_size/images.shape[0]),1,1,1))
+							else:
+								images = np.tile(images,(math.ceil(self.batch_size/images.shape[0]),1,1,1,1))
+							label = np.tile(label,(math.ceil(self.batch_size/label.shape[0]),1))
+
+							images = images[:self.batch_size,]
+							label = label[:self.batch_size,]
 
 						sigmoid, loss, result, accuracy, summary = self.sess.run(
 							[self.sigmoid_op,self.avg_loss_op, self.result_op, self.acc_op, summary_op], 
 							feed_dict={self.input_placeholder: images, self.output_placeholder: label})
-						print("{}: loss: {}".format(datetime.datetime.now(),loss))
+						print("{}: Testing loss: {}".format(datetime.datetime.now(),loss))
 						# print("{}: accuracy: {}".format(datetime.datetime.now(),accuracy))
 						print("{}: ground truth: {}".format(datetime.datetime.now(),label[:5]))
 						print("{}: result: {}".format(datetime.datetime.now(),result[:5]))

@@ -31,9 +31,8 @@ This is a Tensorflow implementation for medical image classification tasks. The 
 Currently the classifier provides following classification networks:
 - LeNet
 - AlexNet
-
-Following networks are to be developed:
-- VGG
+- GoogLeNetv1
+- Vgg
 - ResNet
 
 ## Usage
@@ -97,7 +96,7 @@ By default the software use the 0th GPU in the system. Use argument option `--gp
 1. Put all the data in accordance to [Folder Hierarchy](#folder-hierarchy)
 2. Run the command:
 	```bash
-	python main.py -p TRAIN --gpu 0
+	python main.py -p TRAIN --gpu 0 --config_json=./configs/config.json
 	```
 3. Open Tensorboard:
 	```bash
