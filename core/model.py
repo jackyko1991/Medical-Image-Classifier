@@ -119,9 +119,9 @@ class MedicalImageClassifier(object):
 					)
 			dataset = Dataset.get_dataset()
 			if self.dimension == 2:
-				dataset = dataset.shuffle(buffer_size=20)
+				dataset = dataset.shuffle(buffer_size=5)
 			else:
-				dataset = dataset.shuffle(buffer_size=10)
+				dataset = dataset.shuffle(buffer_size=3)
 			dataset = dataset.batch(self.batch_size,drop_remainder=False)
 
 		return dataset.make_initializable_iterator()
@@ -201,9 +201,9 @@ class MedicalImageClassifier(object):
 					is_training=True,
 					activation_fn="relu",
 					keep_prob=1.0)
-		elif "GoogLeNet" in self.network_name:
+		elif "Inception" in self.network_name:
 			if self.dimension == 2:
-				self.network = networks.GoogLeNet2D(
+				self.network = networks.InceptionNet2D(
 					num_classes=self.output_channel_num,
 					is_training=True,
 					activation_fn="relu",
@@ -410,6 +410,8 @@ class MedicalImageClassifier(object):
 
 			# training phase
 			while True:
+				if self.global_step.eval() > self.max_steps:
+					sys.exit("Reach maximum training steps")
 				try:
 					self.sess.run(tf.initializers.local_variables())
 					images, label = self.sess.run(self.next_element_train)
