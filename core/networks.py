@@ -485,7 +485,7 @@ class InceptionNet2D(object):
 		with tf.variable_scope(name):
 			if channels_1x1 > 1:
 				# will passthrough if channels_1x1 == 0
-				conv_1x1 = self.ConvActivate2d_block(input_tensor, [1,1,input_channels,channels_1x1],padding='SAME',name="1x1")
+				conv_1x1 = self.ConvActivate2d_block(input_tensor, [1,1,input_channels,channels_1x1],strides=strides,padding='SAME',name="1x1")
 				filters.append(conv_1x1)
 
 			if channels_3x3 >1:
@@ -531,8 +531,6 @@ class InceptionNet2D(object):
 				# will passthrough if channels_pool == 0
 				pool = self.ConvActivate2d_block(pool, [1,1,input_channels,channels_pool], padding='SAME',name="pool_conv")
 			filters.append(pool)
-
-			print(filters)
 
 			output = tf.concat(filters,axis=3,name="output")
 

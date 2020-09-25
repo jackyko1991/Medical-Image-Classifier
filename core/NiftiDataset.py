@@ -8,6 +8,14 @@ import multiprocessing
 import pandas as pd
 from tqdm import tqdm
 
+def read_image(path):
+	reader = sitk.ImageFileReader()
+	reader.SetFileName(path)
+	# print("Reading file {}...".format(path))
+	image = reader.Execute()
+	# print("Read file {} success".format(path))
+	return image
+
 class NiftiDataset(object):
 	"""
 	load image-label pair for training, testing and inference.
@@ -62,11 +70,6 @@ class NiftiDataset(object):
 		self.data_size = len(os.listdir(self.data_dir))
 		return self.dataset
 
-	def read_image(self,path):
-		reader = sitk.ImageFileReader()
-		reader.SetFileName(path)
-		return reader.Execute()
-
 	def input_parser(self, case):
 		case = case.decode("utf-8")
 
@@ -74,7 +77,7 @@ class NiftiDataset(object):
 		images = []
 
 		for channel in range(len(self.image_filenames)):
-			image_ = self.read_image(os.path.join(self.data_dir,case,self.image_filenames[channel]))
+			image_ = read_image(os.path.join(self.data_dir,case,self.image_filenames[channel]))
 			images.append(image_)
 
 		# cast images
