@@ -8,6 +8,7 @@ import sys
 import os
 import shutil
 import math
+import multiprocessing
 
 class MedicalImageClassifier(object):
 	def __init__(self,sess,config):
@@ -119,9 +120,9 @@ class MedicalImageClassifier(object):
 					)
 			dataset = Dataset.get_dataset()
 			if self.dimension == 2:
-				dataset = dataset.shuffle(buffer_size=5)
+				dataset = dataset.shuffle(buffer_size=multiprocessing.cpu_count())
 			else:
-				dataset = dataset.shuffle(buffer_size=3)
+				dataset = dataset.shuffle(buffer_size=multiprocessing.cpu_count())
 			dataset = dataset.batch(self.batch_size,drop_remainder=False)
 
 		return dataset.make_initializable_iterator()
@@ -201,13 +202,25 @@ class MedicalImageClassifier(object):
 					is_training=True,
 					activation_fn="relu",
 					keep_prob=1.0)
-		elif "Inception" in self.network_name:
+		elif "Inception" in self.network_name and "ResNet" not in self.network_name:
 			if self.dimension == 2:
 				self.network = networks.InceptionNet2D(
 					num_classes=self.output_channel_num,
 					is_training=True,
 					activation_fn="relu",
 					keep_prob=1.0,
+					version=int(self.network_name[-1])
+					)
+			else:
+				exit()
+		elif "Inception" in self.network_name and "ResNet" in self.network_name:
+			if self.dimension == 2:
+				self.network = networks.InceptionResNet2D(
+					num_classes=self.output_channel_num,
+					is_training=True,
+					activation_fn="relu",
+					keep_prob=1.0,
+					residual=True,
 					version=int(self.network_name[-1])
 					)
 			else:

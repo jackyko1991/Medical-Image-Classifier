@@ -517,19 +517,85 @@ class InceptionNet2D(object):
 					conv_5x5 = self.ConvActivate2d_block(conv_5x5, [1,linear_kernel_size,channels_5x5,channels_5x5],strides=strides,padding='SAME',name="5x5_3")
 					conv_5x5 = self.ConvActivate2d_block(conv_5x5, [linear_kernel_size,1,channels_5x5,channels_5x5],strides=strides,padding='SAME',name="5x5_4")
 					filters.append(conv_5x5)
-				elif version >1 and wide_module == True:
+				elif version >1 and version <4 and wide_module == True:
 					conv_5x5_1 = self.ConvActivate2d_block(conv_5x5_reduce, [3,3,channels_5x5_reduce,channels_5x5],padding='SAME',name="5x5_1")
 					conv_5x5_2 = self.ConvActivate2d_block(conv_5x5_1, [linear_kernel_size,1,channels_5x5,channels_5x5],padding='SAME',name="5x5_2")
 					conv_5x5_3 = self.ConvActivate2d_block(conv_5x5_1, [1,linear_kernel_size,channels_5x5,channels_5x5],strides=strides,padding='SAME',name="5x5_3")
 					filters.extend([conv_5x5_2,conv_5x5_3])
+				elif version ==4 and wide_module == True:
+					conv_5x5_1 = self.ConvActivate2d_block(conv_5x5_reduce, [1,3,channels_5x5_reduce,int((channels_5x5_reduce+channels_5x5*2)/2)],padding='SAME',name="5x5_1")
+					conv_5x5_2 = self.ConvActivate2d_block(conv_5x5_1, [3,1,int((channels_5x5_reduce+channels_5x5*2)/2),channels_5x5*2],padding='SAME',name="5x5_2")
+					conv_5x5_3 = self.ConvActivate2d_block(conv_5x5_2, [linear_kernel_size,1,channels_5x5*2,channels_5x5],padding='SAME',name="5x5_3")
+					conv_5x5_4 = self.ConvActivate2d_block(conv_5x5_2, [1,linear_kernel_size,channels_5x5*2,channels_5x5],strides=strides,padding='SAME',name="5x5_4")
+					filters.extend([conv_5x5_3,conv_5x5_4])
 
-			if pool_type == "max":
-				pool = tf.nn.max_pool2d(input_tensor, ksize=[1,3,3,1], strides=strides, padding = 'SAME',name='pool')
-			elif pool_type == "avg":
-				pool = tf.nn.avg_pool(input_tensor, ksize=[1,3,3,1], strides=strides, padding = 'SAME',name='pool')
-			if channels_pool > 0:
-				# will passthrough if channels_pool == 0
-				pool = self.ConvActivate2d_block(pool, [1,1,input_channels,channels_pool], padding='SAME',name="pool_conv")
+			if residual == False:
+				if pool_type == "max":
+					pool = tf.nn.max_pool2d(input_tensor, ksize=[1,3,3,1], strides=strides, padding = 'SAME',name='pool')
+				elif pool_type == "avg":
+					pool = tf.nn.avg_pool(input_tensor, ksize=[1,3,3,1], strides=strides, padding = 'SAME',name='pool')
+				if channels_pool > 0:
+					# will passthrough if channels_pool == 0
+					pool = self.ConvActivate2d_block(pool, [1,1,input_channels,channels_pool], padding='SAME',name="pool_conv")
+				filters.append(pool)
+
+				output = tf.concat(filters,axis=3,name="output")
+			else:
+				output = tf.concat(filters,axis=3,name="branch_merge")
+				output = self.ConvActivate2d_block(output, [1,1,int(output.get_shape()[-1]),256])
+
+		return output
+
+	def reductionA_module(self,
+			input_image,
+			channels_3x3=384,
+			channels_5x5_reduce_1=192,
+			channels_5x5_reduce_2=224,
+			channels_5x5=256):
+		"""
+		reduction A for inception(-v4,-ResNet-v1,-ResNet-v2)
+		"""
+
+		input_channels = int(input_image.get_shape()[-1])
+		filters = []
+
+		with tf.variable_scope("reductionA"):
+			conv_3x3 = self.ConvActivate2d_block(input_image, [3,3,input_channels,channels_3x3],strides=[1,2,2,1],padding='VALID',name="3x3")
+			filters.append(conv_3x3)
+
+			conv_5x5_reduce = self.ConvActivate2d_block(input_image, [1,1,input_channels,channels_5x5_reduce_1],padding='SAME',name="5x5_reduce_1")
+			conv_5x5_reduce = self.ConvActivate2d_block(conv_5x5_reduce, [3,3,channels_5x5_reduce_1,channels_5x5_reduce_2],padding='SAME',name="5x5_reduce_2")
+			conv_5x5 = self.ConvActivate2d_block(conv_5x5_reduce, [3,3,channels_5x5_reduce_2,channels_5x5],strides=[1,2,2,1],padding='VALID',name="5x5")
+			filters.append(conv_5x5)
+
+			pool = tf.nn.max_pool2d(input_image, ksize=[1,3,3,1], strides=[1,2,2,1], padding = 'VALID',name='pool')
+			filters.append(pool)
+
+			output = tf.concat(filters,axis=3,name="output")
+
+		return output
+
+	def reductionB_module(self,
+			input_image):
+		"""
+		reduction B for inception-v4
+		"""
+
+		input_channels = int(input_image.get_shape()[-1])
+		filters = []
+
+		with tf.variable_scope("reductionB"):
+			conv_3x3_reduce = self.ConvActivate2d_block(input_image, [1,1,input_channels,192],strides=[1,1,1,1],padding='SAME',name="3x3_1")
+			conv_3x3 = self.ConvActivate2d_block(conv_3x3_reduce, [3,3,192,192],strides=[1,2,2,1],padding='VALID',name="3x3_2")
+			filters.append(conv_3x3)
+
+			conv_5x5_reduce = self.ConvActivate2d_block(input_image, [1,1,input_channels,256],padding='SAME',name="5x5_reduce_1")
+			conv_5x5_reduce = self.ConvActivate2d_block(conv_5x5_reduce, [1,7,256,256],padding='SAME',name="5x5_reduce_2")
+			conv_5x5_reduce = self.ConvActivate2d_block(conv_5x5_reduce, [7,2,256,320],padding='SAME',name="5x5_reduce_3")
+			conv_5x5 = self.ConvActivate2d_block(conv_5x5_reduce, [3,3,320,320],strides=[1,2,2,1],padding='VALID',name="5x5")
+			filters.append(conv_5x5)
+
+			pool = tf.nn.max_pool2d(input_image, ksize=[1,3,3,1], strides=[1,2,2,1], padding = 'VALID',name='pool')
 			filters.append(pool)
 
 			output = tf.concat(filters,axis=3,name="output")
@@ -553,7 +619,7 @@ class InceptionNet2D(object):
 
 		aux = []
 
-		with tf.variable_scope('input'):
+		with tf.variable_scope('stem'):
 			x = self.ConvActivate2d_block(input_image,[7,7,input_channels,64],strides=[1,2,2,1],padding='SAME',is_training=self.is_training, name="conv_1")
 			x = tf.nn.max_pool2d(x, ksize=[1,3,3,1], strides=[1,2,2,1], padding = 'SAME',name='pool1')
 			x = tf.nn.local_response_normalization(x, depth_radius=2, alpha=2e-05, beta=0.75,name='pool1_lrn')
@@ -608,7 +674,7 @@ class InceptionNet2D(object):
 		input_channels = int(input_image.get_shape()[-1])
 		aux = []
 
-		with tf.variable_scope('input'):
+		with tf.variable_scope('stem'):
 			x = self.ConvActivate2d_block(input_image,[7,7,input_channels,64],strides=[1,2,2,1],padding='SAME',is_training=self.is_training, name="conv_1")
 			x = tf.nn.max_pool2d(x, ksize=[1,3,3,1], strides=[1,2,2,1], padding = 'SAME',name='pool1')
 			x = tf.nn.local_response_normalization(x, depth_radius=2, alpha=2e-05, beta=0.75,name='pool1_lrn')
@@ -672,7 +738,7 @@ class InceptionNet2D(object):
 		input_channels = int(input_image.get_shape()[-1])
 		aux = []
 
-		with tf.variable_scope('input'):
+		with tf.variable_scope('stem'):
 			x = self.ConvActivate2d_block(input_image,[3,3,input_channels,32],strides=[1,2,2,1],padding='VALID',is_training=self.is_training, name="conv_1a")
 			x = self.ConvActivate2d_block(x,[3,3,32,32],strides=[1,1,1,1],padding='VALID',is_training=self.is_training, name="conv_1b")
 			x = self.ConvActivate2d_block(x,[3,3,32,64],strides=[1,1,1,1],padding='SAME',is_training=self.is_training, name="conv_1c")
@@ -701,13 +767,13 @@ class InceptionNet2D(object):
 			x = self.inception_module(x,192,160,192,160,192,192,name="inception_4b",version=self.version,linear_factorization=True,linear_kernel_size=7,pool_type="avg")
 			x = self.inception_module(x,192,160,192,160,192,192,name="inception_4c",version=self.version,linear_factorization=True,linear_kernel_size=7,pool_type="avg")
 			x = self.inception_module(x,192,192,192,192,192,192,name="inception_4d",version=self.version,linear_factorization=True,linear_kernel_size=7,pool_type="avg")
-			aux_1 = self.auxillary_output(x,keep_prob=keep_prob,name="auxillary_output_2")
+			aux_1 = self.auxillary_output(x,keep_prob=keep_prob,name="auxillary_output_1")
 			aux.append(aux_1)
 			"""
 			efficient grid size reduction,this will give output channel of 320+192+768=1280
 			from original paper reducing the output size in half should double the input channel
 			"""
-			x = self.inception_module(x,0,192,320,192,192,0,name="inception_4e",version=self.version,strides=[1,2,2,1],pool_type="avg")
+			x = self.inception_module(x,0,192,320,192,192,0,name="inception_4e",version=self.version,strides=[1,2,2,1],pool_type="max")
 
 		# block 5
 		with tf.variable_scope('block5'):
@@ -728,17 +794,99 @@ class InceptionNet2D(object):
 			output = tf.concat(aux,axis=-1)
 		return output
 
+	def InceptionV4(self, input_image,keep_prob=1.0):
+		"""
+		Inception V4
+		"""
+		input_channels = int(input_image.get_shape()[-1])
+		aux = []
+
+		# stem
+		with tf.variable_scope('stem'):
+			#block 1
+			x = self.ConvActivate2d_block(input_image,[3,3,input_channels,32],strides=[1,2,2,1],padding='VALID',is_training=self.is_training, name="conv_1a")
+			x = self.ConvActivate2d_block(x,[3,3,32,32],strides=[1,1,1,1],padding='VALID',is_training=self.is_training, name="conv_1b")
+			x = self.ConvActivate2d_block(x,[3,3,32,64],strides=[1,1,1,1],padding='SAME',is_training=self.is_training, name="conv_1c")
+			x_1 = tf.nn.max_pool2d(x, ksize=[1,3,3,1], strides=[1,2,2,1], padding = 'VALID',name='pool_1')
+			x_2 = self.ConvActivate2d_block(x,[3,3,64,96],strides=[1,2,2,1],padding='VALID',name="conv_1d")
+			x = tf.concat([x_1,x_2],axis=-1)
+			x = tf.nn.local_response_normalization(x, depth_radius=2, alpha=2e-05, beta=0.75,name='pool1_lrn')
+
+			# block 2 branch 1
+			x1 = self.ConvActivate2d_block(x,[1,1,160,64],padding='SAME',is_training=self.is_training, name="conv_2_1a")
+			x1 = self.ConvActivate2d_block(x1,[3,3,64,96],padding='VALID',is_training=self.is_training, name="conv_2_1b")
+
+			# block 2 branch 2
+			x2 = self.ConvActivate2d_block(x,[1,1,160,64],padding='SAME',is_training=self.is_training, name="conv_2_2a")
+			x2 = self.ConvActivate2d_block(x2,[7,1,64,64],padding='SAME',is_training=self.is_training, name="conv_2_2b")
+			x2 = self.ConvActivate2d_block(x2,[1,7,64,64],padding='SAME',is_training=self.is_training, name="conv_2_2c")
+			x2 = self.ConvActivate2d_block(x2,[3,3,64,96],padding='VALID',is_training=self.is_training, name="conv_2_2d")
+
+			x = tf.concat([x_1,x_2],axis=-1)
+			x = tf.nn.local_response_normalization(x, depth_radius=2, alpha=2e-05, beta=0.75,name='pool2_lrn')
+
+			x_1 = tf.nn.max_pool2d(x, ksize=[1,3,3,1], strides=[1,2,2,1], padding = 'VALID',name='pool_2e')
+			x_2 = self.ConvActivate2d_block(x,[3,3,160,192],strides=[1,2,2,1],padding='VALID',name="conv_2e")
+			x = tf.concat([x_1,x_2],axis=-1)
+
+		# block 3
+		for i in range(4):
+			x = self.inception_module(x,96,64,96,64,96,96,name="inceptionA_{}".format(str(i)),version=self.version)
+			
+		x = self.reductionA_module(x,channels_3x3=384,channels_5x5_reduce_1=192,channels_5x5_reduce_2=224,channels_5x5=256)
+
+		# block 4
+		for i in range(7):
+			x = self.inception_module(x,256,384,256,384,512,256,name="inceptionB_{}".format(str(i)),version=self.version,linear_factorization=True)
+			
+		"""
+		efficient grid size reduction,this will give output channel of 384+256+384=1024
+		from original paper reducing the output size in half should double the input channel
+		"""
+		x = self.reductionB_module(x)
+
+		# block 5
+		for i in range(3):
+			x = self.inception_module(x,256,384,256,384,256,96,name="inceptionC_{}".format(str(i)),version=self.version,wide_module=True)
+		aux_1 = self.auxillary_output(x,keep_prob=keep_prob,name="auxillary_output_1")
+		aux.append(aux_1)
+
+		# output
+		with tf.variable_scope('output'):
+			aux_2 = tf.nn.avg_pool(x,[1,5,5,1],strides=[1,3,3,1],padding='SAME')
+			aux_2 = tf.reshape(aux_2, [-1, aux_2.get_shape()[1]*aux_2.get_shape()[2]*aux_2.get_shape()[3]])
+			aux_2 = tf.layers.dense(inputs=aux_2,units=1024, activation=self.activation_fn)
+			aux_2 = tf.layers.batch_normalization(aux_2, momentum=0.99, epsilon=0.001,center=True, scale=True,training=self.is_training)
+			aux_2 = tf.nn.dropout(aux_2, keep_prob)
+			aux_2 = tf.layers.dense(inputs=aux_2,units=self.num_classes, activation=None)
+			aux.append(aux_2)
+
+			# linear combination of auxiliary outputs
+			output = tf.concat(aux,axis=-1)
+		return output
+
+	def InceptionResNetV1(self,input_image,keep_prob=1.0):
+		return
+
 	def GetNetwork(self, input_image):
 		keep_prob = self.keep_prob if self.is_training else 1.0
 		input_channels = int(input_image.get_shape()[-1])
 
 		with tf.variable_scope('InceptionNet2D'):
-			if self.version == 1:
-				output = self.InceptionV1(input_image,keep_prob=keep_prob)
-			elif self.version == 2:
-				output = self.InceptionV2(input_image,keep_prob=keep_prob)
-			elif self.version == 3:
-				output = self.InceptionV3(input_image,keep_prob=keep_prob)
+			if self.residual == False:
+				if self.version == 1:
+					output = self.InceptionV1(input_image,keep_prob=keep_prob)
+				elif self.version == 2:
+					output = self.InceptionV2(input_image,keep_prob=keep_prob)
+				elif self.version == 3:
+					output = self.InceptionV3(input_image,keep_prob=keep_prob)
+				elif self.version == 4:
+					output = self.InceptionV4(input_image,keep_prob=keep_prob)
+			else:
+				if self.version == 1:
+					output = self.InceptionResNetV1(input_image,keep_prob=keep_prob)
+				elif self.version == 2:
+					return
 			logits = tf.layers.dense(inputs=output,units=self.num_classes, activation=None)
 
 		return logits

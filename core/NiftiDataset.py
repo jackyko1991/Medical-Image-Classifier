@@ -63,15 +63,15 @@ class NiftiDataset(object):
 			self.additional_features_df = pd.read_csv(self.additional_features_filename)
 
 		dataset = tf.data.Dataset.from_tensor_slices(os.listdir(self.data_dir))
-		dataset = dataset.map(lambda case: tuple(tf.py_func(
-			self.input_parser, [case], [tf.float32,tf.int64])),
+		dataset = dataset.map(lambda case: tuple(tf.py_function(
+			func=self.input_parser, inp=[case], Tout=[tf.float32,tf.int64])),
 			num_parallel_calls=multiprocessing.cpu_count())
 		self.dataset = dataset
 		self.data_size = len(os.listdir(self.data_dir))
 		return self.dataset
 
 	def input_parser(self, case):
-		case = case.decode("utf-8")
+		case = case.numpy().decode("utf-8")
 
 		# read images
 		images = []
@@ -447,7 +447,6 @@ class Resample2D(object):
 			# resample on image
 			resampler.SetOutputOrigin(images[image_channel].GetOrigin())
 			resampler.SetOutputDirection(images[image_channel].GetDirection())
-			# print("Resampling image...")
 			images[image_channel] = resampler.Execute(images[image_channel])
 
 		return {'images': images}
