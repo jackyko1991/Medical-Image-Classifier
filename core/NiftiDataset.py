@@ -8,6 +8,15 @@ import multiprocessing
 import pandas as pd
 from tqdm import tqdm
 
+def read_image(path):
+	reader = sitk.ImageFileReader()
+	reader.SetFileName(path)
+	# print("Reading file {}...".format(path))
+	image = reader.Execute()
+	# print("Read file {} success".format(path))
+
+	return image
+
 class NiftiDataset(object):
 	"""
 	load image-label pair for training, testing and inference.
@@ -55,32 +64,29 @@ class NiftiDataset(object):
 			self.additional_features_df = pd.read_csv(self.additional_features_filename)
 
 		dataset = tf.data.Dataset.from_tensor_slices(os.listdir(self.data_dir))
-		dataset = dataset.map(lambda case: tuple(tf.py_func(
-			self.input_parser, [case], [tf.float32,tf.int64])),
-			num_parallel_calls=multiprocessing.cpu_count())
+		dataset = dataset.map(lambda case: tuple(tf.py_function(
+			func=self.input_parser, inp=[case], Tout=[tf.float32,tf.int64])),
+			# num_parallel_calls=multiprocessing.cpu_count())
+			num_parallel_calls=4)
 		self.dataset = dataset
 		self.data_size = len(os.listdir(self.data_dir))
 		return self.dataset
 
-	def read_image(self,path):
-		reader = sitk.ImageFileReader()
-		reader.SetFileName(path)
-		return reader.Execute()
-
 	def input_parser(self, case):
-		case = case.decode("utf-8")
+		case = case.numpy().decode("utf-8")
 
 		# read images
 		images = []
 
 		for channel in range(len(self.image_filenames)):
-			image_ = self.read_image(os.path.join(self.data_dir,case,self.image_filenames[channel]))
+			image_ = sitk.ReadImage(os.path.join(self.data_dir,case,self.image_filenames[channel]))
+			# image_ = read_image(os.path.join(self.data_dir,case,self.image_filenames[channel]))
 			images.append(image_)
 
 		# cast images
-		castImageFilter = sitk.CastImageFilter()
-		castImageFilter.SetOutputPixelType(sitk.sitkFloat32)
 		for channel in range(len(images)):
+			castImageFilter = sitk.CastImageFilter()
+			castImageFilter.SetOutputPixelType(sitk.sitkFloat32)
 			images[channel] = castImageFilter.Execute(images[channel])
 			# check header consistency
 			sameSize = images[channel].GetSize() == images[0].GetSize()
@@ -146,11 +152,10 @@ class Normalization(object):
 		# normalizeFilter = sitk.NormalizeImageFilter()
 		# image, label = sample['image'], sample['label']
 		# image = normalizeFilter.Execute(image)
-		resacleFilter = sitk.RescaleIntensityImageFilter()
-		resacleFilter.SetOutputMaximum(255)
-		resacleFilter.SetOutputMinimum(0)
-
 		for channel in range(len(images)):
+			resacleFilter = sitk.RescaleIntensityImageFilter()
+			resacleFilter.SetOutputMaximum(255)
+			resacleFilter.SetOutputMinimum(0)
 			images[channel] = resacleFilter.Execute(images[channel])
 
 		return {'images': images}
@@ -202,8 +207,8 @@ class RandomFlip(object):
 
 		flip = np.random.randint(2, size=1)[0]
 		if flip:
-			flipFilter = sitk.FlipImageFilter()
 			for image_channel in range(len(images)):
+				flipFilter = sitk.FlipImageFilter()
 				flipFilter.SetFlipAxes(self.axes)
 				images[image_channel] = flipFilter.Execute(images[image_channel])
 
@@ -284,13 +289,13 @@ class ManualNormalization(object):
 
 	def __call__(self, sample):
 		images = sample['images']
-		intensityWindowingFilter = sitk.IntensityWindowingImageFilter()
-		intensityWindowingFilter.SetOutputMaximum(255)
-		intensityWindowingFilter.SetOutputMinimum(0)
-		intensityWindowingFilter.SetWindowMaximum(self.windowMax);
-		intensityWindowingFilter.SetWindowMinimum(self.windowMin);
-
+		
 		for channel in range(len(images)):
+			intensityWindowingFilter = sitk.IntensityWindowingImageFilter()
+			intensityWindowingFilter.SetOutputMaximum(255)
+			intensityWindowingFilter.SetOutputMinimum(0)
+			intensityWindowingFilter.SetWindowMaximum(self.windowMax);
+			intensityWindowingFilter.SetWindowMinimum(self.windowMin);
 			images[channel] = intensityWindowingFilter.Execute(images[channel])
 
 		return {'images': images}
@@ -352,14 +357,13 @@ class RandomRotate2D(object):
 		ang_degree = random.randint(0,180)*1.0
 		transform.SetAngle(ang_degree/180.0*math.pi)
 
-		resample = sitk.ResampleImageFilter()
-		resample.SetReferenceImage(images[0])
-		resample.SetSize([images[0].GetSize()[0],images[0].GetSize()[1]])
-		resample.SetOutputDirection(images[0].GetDirection())
-		resample.SetInterpolator(sitk.sitkLinear)
-		resample.SetTransform(transform)
-
 		for image_channel in range(len(images)):
+			resample = sitk.ResampleImageFilter()
+			resample.SetReferenceImage(images[0])
+			resample.SetSize([images[0].GetSize()[0],images[0].GetSize()[1]])
+			resample.SetOutputDirection(images[0].GetDirection())
+			resample.SetInterpolator(sitk.sitkLinear)
+			resample.SetTransform(transform)
 			images[image_channel] = resample.Execute(images[image_channel])
 
 		return {'images': images}
@@ -390,14 +394,13 @@ class RandomRotate3D(object):
 
 		transform.SetRotation(angX_degree/180.0*math.pi,angY_degree/180.0*math.pi,angZ_degree/180.0*math.pi)
 
-		resample = sitk.ResampleImageFilter()
-		resample.SetReferenceImage(images[0])
-		resample.SetSize([images[0].GetSize()[0],images[0].GetSize()[1],images[0].GetSize()[2]])
-		resample.SetOutputDirection(images[0].GetDirection())
-		resample.SetInterpolator(sitk.sitkLinear)
-		resample.SetTransform(transform)
-
 		for image_channel in range(len(images)):
+			resample = sitk.ResampleImageFilter()
+			resample.SetReferenceImage(images[0])
+			resample.SetSize([images[0].GetSize()[0],images[0].GetSize()[1],images[0].GetSize()[2]])
+			resample.SetOutputDirection(images[0].GetDirection())
+			resample.SetInterpolator(sitk.sitkLinear)
+			resample.SetTransform(transform)
 			images[image_channel] = resample.Execute(images[image_channel])
 
 		return {'images': images}
@@ -426,7 +429,6 @@ class Resample2D(object):
 	def __call__(self, sample):
 		images = sample['images']
 
-		resampler = sitk.ResampleImageFilter()
 		for image_channel in range(len(images)):
 			old_spacing = images[image_channel].GetSpacing()
 			old_size = images[image_channel].GetSize()
@@ -436,7 +438,9 @@ class Resample2D(object):
 			new_size = []
 			for i in range(2):
 				new_size.append(int(math.ceil(old_spacing[i]*old_size[i]/new_spacing[i])))
+
 			new_size = tuple(new_size)
+			resampler = sitk.ResampleImageFilter()
 			resampler.SetInterpolator(2)
 			resampler.SetOutputSpacing(new_spacing)
 			resampler.SetSize(new_size)
@@ -444,7 +448,6 @@ class Resample2D(object):
 			# resample on image
 			resampler.SetOutputOrigin(images[image_channel].GetOrigin())
 			resampler.SetOutputDirection(images[image_channel].GetDirection())
-			# print("Resampling image...")
 			images[image_channel] = resampler.Execute(images[image_channel])
 
 		return {'images': images}
@@ -473,7 +476,6 @@ class Resample3D(object):
 	def __call__(self, sample):
 		images = sample['images']
 
-		resampler = sitk.ResampleImageFilter()
 		for image_channel in range(len(images)):
 			old_spacing = images[image_channel].GetSpacing()
 			old_size = images[image_channel].GetSize()
@@ -484,6 +486,7 @@ class Resample3D(object):
 			for i in range(3):
 				new_size.append(int(math.ceil(old_spacing[i]*old_size[i]/new_spacing[i])))
 			new_size = tuple(new_size)
+			resampler = sitk.ResampleImageFilter()
 			resampler.SetInterpolator(2)
 			resampler.SetOutputSpacing(new_spacing)
 			resampler.SetSize(new_size)
@@ -647,22 +650,21 @@ class RandomCrop2D(object):
 
 		contain_label = False
 
-		roiFilter = sitk.RegionOfInterestImageFilter()
-		roiFilter.SetSize([size_new[0],size_new[1]])
-
-		if size_old[0] <= size_new[0]:
-			start_i = 0
-		else:
-			start_i = np.random.randint(0, size_old[0]-size_new[0])
-
-		if size_old[1] <= size_new[1]:
-			start_j = 0
-		else:
-			start_j = np.random.randint(0, size_old[1]-size_new[1])
-
-		roiFilter.SetIndex([start_i,start_j])
-
 		for channel in range(len(images)):
+			roiFilter = sitk.RegionOfInterestImageFilter()
+			roiFilter.SetSize([size_new[0],size_new[1]])
+
+			if size_old[0] <= size_new[0]:
+				start_i = 0
+			else:
+				start_i = np.random.randint(0, size_old[0]-size_new[0])
+
+			if size_old[1] <= size_new[1]:
+				start_j = 0
+			else:
+				start_j = np.random.randint(0, size_old[1]-size_new[1])
+
+			roiFilter.SetIndex([start_i,start_j])
 			images[channel] = roiFilter.Execute(images[channel])
 
 		return {'images': images}
@@ -692,27 +694,26 @@ class RandomCrop3D(object):
 
 		contain_label = False
 
-		roiFilter = sitk.RegionOfInterestImageFilter()
-		roiFilter.SetSize([size_new[0],size_new[1],size_new[2]])
-
-		if size_old[0] <= size_new[0]:
-			start_i = 0
-		else:
-			start_i = np.random.randint(0, size_old[0]-size_new[0])
-
-		if size_old[1] <= size_new[1]:
-			start_j = 0
-		else:
-			start_j = np.random.randint(0, size_old[1]-size_new[1])
-
-		if size_old[2] <= size_new[2]:
-			start_k = 0
-		else:
-			start_k = np.random.randint(0, size_old[2]-size_new[2])
-
-		roiFilter.SetIndex([start_i,start_j,start_k])
-
 		for channel in range(len(images)):
+			roiFilter = sitk.RegionOfInterestImageFilter()
+			roiFilter.SetSize([size_new[0],size_new[1],size_new[2]])
+
+			if size_old[0] <= size_new[0]:
+				start_i = 0
+			else:
+				start_i = np.random.randint(0, size_old[0]-size_new[0])
+
+			if size_old[1] <= size_new[1]:
+				start_j = 0
+			else:
+				start_j = np.random.randint(0, size_old[1]-size_new[1])
+
+			if size_old[2] <= size_new[2]:
+				start_k = 0
+			else:
+				start_k = np.random.randint(0, size_old[2]-size_new[2])
+
+			roiFilter.SetIndex([start_i,start_j,start_k])
 			images[channel] = roiFilter.Execute(images[channel])
 
 		return {'images': images}
@@ -726,15 +727,14 @@ class RandomNoise(object):
 		self.std = std
 
 	def __call__(self, sample):
-		self.noiseFilter = sitk.AdditiveGaussianNoiseImageFilter()
-		self.noiseFilter.SetMean(0)
-		self.noiseFilter.SetStandardDeviation(self.std)
-
 		# print("Normalizing image...")
 		images = sample['images']
 
 		for image_channel in range(len(images)):
-			images[image_channel] = self.noiseFilter.Execute(images[image_channel])		
+			noiseFilter = sitk.AdditiveGaussianNoiseImageFilter()
+			noiseFilter.SetMean(0)
+			noiseFilter.SetStandardDeviation(self.std)
+			images[image_channel] = noiseFilter.Execute(images[image_channel])		
 
 		return {'images': images}
 

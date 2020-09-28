@@ -3,6 +3,7 @@ import json
 from core.model import MedicalImageClassifier
 import os
 import tensorflow as tf
+import faulthandler
 
 def get_parser():
 	# create parser object
@@ -70,5 +71,7 @@ def main(args):
 			model.predict() 
 
 if __name__=="__main__":
+	# for seg fault trace
+	faulthandler.enable()
 	args = get_parser()
 	main(args)

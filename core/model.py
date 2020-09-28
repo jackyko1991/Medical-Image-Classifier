@@ -8,6 +8,7 @@ import sys
 import os
 import shutil
 import math
+import multiprocessing
 
 class MedicalImageClassifier(object):
 	def __init__(self,sess,config):
@@ -119,10 +120,11 @@ class MedicalImageClassifier(object):
 					)
 			dataset = Dataset.get_dataset()
 			if self.dimension == 2:
-				dataset = dataset.shuffle(buffer_size=5)
+				dataset = dataset.shuffle(buffer_size=multiprocessing.cpu_count())
 			else:
-				dataset = dataset.shuffle(buffer_size=3)
+				dataset = dataset.shuffle(buffer_size=multiprocessing.cpu_count())
 			dataset = dataset.batch(self.batch_size,drop_remainder=False)
+			dataset = dataset.prefetch(1)
 
 		return dataset.make_initializable_iterator()
 
@@ -141,6 +143,7 @@ class MedicalImageClassifier(object):
 		# create placeholder for data input 
 		self.input_placeholder = tf.placeholder(tf.float32, input_batch_shape)
 		self.output_placeholder = tf.placeholder(tf.float32, output_batch_shape)
+		self.dropout_placeholder = tf.placeholder(tf.float32, name='dropout')
 
 		# placeholder for additional features
 		if self.additional_features_num > 0:
@@ -179,14 +182,14 @@ class MedicalImageClassifier(object):
 					num_classes=self.output_channel_num,
 					is_training=True,
 					activation_fn="relu",
-					keep_prob=1.0
+					dropout=self.dropout_placeholder
 					)
 			else:	
 				self.network = networks.Lenet3D(
 					num_classes=self.output_channel_num,
 					is_training=True,
 					activation_fn="relu",
-					keep_prob=1.0
+					dropout=self.dropout_placeholder
 					)
 		elif self.network_name == "AlexNet":
 			if self.dimension == 2:
@@ -194,42 +197,56 @@ class MedicalImageClassifier(object):
 					num_classes=self.output_channel_num,
 					is_training=True,
 					activation_fn="relu",
-					keep_prob=1.0)
+					dropout=self.dropout_placeholder
+					)
 			else:
 				self.network = networks.Alexnet3D(
 					num_classes=self.output_channel_num,
 					is_training=True,
 					activation_fn="relu",
-					keep_prob=1.0)
-		elif "Inception" in self.network_name:
+					dropout=self.dropout_placeholder
+					)
+		elif "Inception" in self.network_name and "ResNet" not in self.network_name:
 			if self.dimension == 2:
 				self.network = networks.InceptionNet2D(
 					num_classes=self.output_channel_num,
 					is_training=True,
 					activation_fn="relu",
-					keep_prob=1.0,
+					dropout=self.dropout_placeholder,
 					version=int(self.network_name[-1])
+					)
+			else:
+				exit()
+		elif "Inception" in self.network_name and "ResNet" in self.network_name:
+			if self.dimension == 2:
+				self.network = networks.InceptionNet2D(
+					num_classes=self.output_channel_num,
+					is_training=True,
+					activation_fn="relu",
+					dropout=self.dropout_placeholder,
+					version=int(self.network_name[-1]),
+					residual=True
 					)
 			else:
 				exit()
 		elif self.network_name == "Vgg":
 			if self.dimension == 2:
-				self.network = networks.Vgg2d(
+				self.network = networks.Vgg2D(
 					num_classes=self.output_channel_num,
 					num_channels=64,
 					is_training=True,
 					activation_fn="relu",
-					keep_prob=1.0,
+					dropout=self.dropout_placeholder,
 					module_config=[2,2,3,3,3],
 					batch_norm_momentum=0.99,
 					fc_channels=[4096,4096])
 			else:
-				self.network = networks.Vgg3d(
+				self.network = networks.Vgg3D(
 					num_classes=self.output_channel_num,
 					num_channels=64,
 					is_training=True,
 					activation_fn="relu",
-					keep_prob=1.0,
+					dropout=self.dropout_placeholder,
 					module_config=[2,2,3,3,3],
 					batch_norm_momentum=0.99,
 					fc_channels=[4096,4096])
@@ -240,7 +257,7 @@ class MedicalImageClassifier(object):
 					num_channels=64,
 					is_training=True,
 					activation_fn="relu",
-					keep_prob=1.0,
+					dropout=self.dropout_placeholder,
 					init_conv_shape=5,
 					init_pool=True,
 					module_config=[2,2,2])
@@ -250,7 +267,7 @@ class MedicalImageClassifier(object):
 					num_channels=64,
 					is_training=True,
 					activation_fn="relu",
-					keep_prob=1.0,
+					dropout=self.dropout_placeholder,
 					init_conv_shape=5,
 					init_pool=True,
 					module_config=[2,2,2])
@@ -273,16 +290,17 @@ class MedicalImageClassifier(object):
 		self.sigmoid_op = tf.sigmoid(self.logits_op)
 		self.result_op = tf.math.round(self.sigmoid_op)
 
-		acc, self.acc_op = tf.metrics.accuracy(labels=self.output_placeholder, predictions=self.result_op)
+		# acc, self.acc_op = tf.metrics.accuracy(labels=self.output_placeholder, predictions=self.result_op)
 
 		tf.summary.scalar('loss/average', self.avg_loss_op)
-		tf.summary.scalar('accuracy/overall',self.acc_op)
+		# tf.summary.scalar('accuracy/overall',self.acc_op)
 
 		self.class_tp = []
 		self.class_tn = []
 		self.class_fp = []
 		self.class_fn = []
 		self.class_auc = []
+		class_accuracy = []
 		class_precision = []
 		class_sensitivity = []
 		class_specificity = []
@@ -297,6 +315,7 @@ class MedicalImageClassifier(object):
 			sensitivity = class_tp_op/(class_tp_op+class_fn_op)
 			specificity = class_tn_op/(class_tn_op+class_fp_op)
 
+			accuracy = tf.where(tf.is_nan(class_acc_op), tf.ones_like(class_acc_op) * 0.5, class_acc_op)
 			precision = tf.where(tf.is_nan(precision), tf.ones_like(precision) * 0.5, precision)
 			sensitivity = tf.where(tf.is_nan(sensitivity), tf.ones_like(sensitivity) * 0.5, sensitivity)
 			specificity = tf.where(tf.is_nan(specificity), tf.ones_like(specificity) * 0.5, specificity)
@@ -307,25 +326,30 @@ class MedicalImageClassifier(object):
 			self.class_fp.append(class_fp_op)
 			self.class_fn.append(class_fn_op)
 			self.class_auc.append(class_auc_op)
+			class_accuracy.append(accuracy)
 			class_precision.append(precision)
 			class_sensitivity.append(sensitivity)
 			class_specificity.append(specificity)
 
 			tf.summary.scalar('loss/' + self.class_names[i], self.loss_op[i])
-			tf.summary.scalar('accuracy/' + self.class_names[i], class_acc_op)
+			tf.summary.scalar('accuracy/' + self.class_names[i], accuracy)
 			tf.summary.scalar('precision/' + self.class_names[i],precision)
 			tf.summary.scalar('sensitivity/' + self.class_names[i],sensitivity)
 			tf.summary.scalar('specificity/' + self.class_names[i],specificity)
 			tf.summary.scalar('auc/' + self.class_names[i],class_auc_op)
 
+		avg_accuracy = tf.reduce_mean(class_accuracy)
 		avg_precision = tf.reduce_mean(class_precision)
 		avg_sensitivity = tf.reduce_mean(class_sensitivity)
 		avg_specificity = tf.reduce_mean(class_specificity)
 		avg_auc = tf.reduce_mean(self.class_auc)
+		tf.summary.scalar('accuracy/average',avg_accuracy)
 		tf.summary.scalar('precision/average', avg_precision)
 		tf.summary.scalar('sensitivity/average', avg_sensitivity)
 		tf.summary.scalar('specificity/average', avg_specificity)
 		tf.summary.scalar('auc/average', avg_auc)
+
+		self.acc_op = avg_accuracy
 
 	def train(self):
 		# read config to class variables
@@ -415,6 +439,7 @@ class MedicalImageClassifier(object):
 				try:
 					self.sess.run(tf.initializers.local_variables())
 					images, label = self.sess.run(self.next_element_train)
+					print("{}: step: {} get next element ok".format(datetime.datetime.now(), self.global_step.eval()))
 					if images.shape[0] < self.batch_size:
 						# if self.dimension == 2:
 						# 	images_zero_pads = np.zeros((self.batch_size-images.shape[0],images.shape[1],images.shape[2],images.shape[3]))
@@ -436,7 +461,11 @@ class MedicalImageClassifier(object):
 
 					sigmoid, loss, result, accuracy, train = self.sess.run(
 						[self.sigmoid_op,self.avg_loss_op, self.result_op, self.acc_op, train_op], 
-						feed_dict={self.input_placeholder: images, self.output_placeholder: label})
+						feed_dict={
+							self.input_placeholder: images, 
+							self.output_placeholder: label,
+							self.dropout_placeholder: self.network_dropout_rate,
+							self.network.is_training: True})
 					print("{}: Training loss: {}".format(datetime.datetime.now(),loss))
 					# print("{}: accuracy: {}".format(datetime.datetime.now(),accuracy))
 					print("{}: ground truth: {}".format(datetime.datetime.now(),label[:5]))
@@ -446,7 +475,9 @@ class MedicalImageClassifier(object):
 					# perform summary log after training op
 					summary = self.sess.run(summary_op,feed_dict={
 						self.input_placeholder: images,
-						self.output_placeholder: label
+						self.output_placeholder: label,
+						self.dropout_placeholder: self.network_dropout_rate,
+						self.network.is_training: True
 						})
 
 					train_summary_writer.add_summary(summary,global_step=tf.train.global_step(self.sess,self.global_step))
@@ -463,7 +494,7 @@ class MedicalImageClassifier(object):
 
 					# testing phase
 					if self.testing and (self.global_step.eval()%self.testing_step_interval == 0):
-						self.network.is_training = False
+						# self.network.is_training = False
 
 						try:
 							images, label = self.sess.run(self.next_element_test)
@@ -491,21 +522,25 @@ class MedicalImageClassifier(object):
 							images = images[:self.batch_size,]
 							label = label[:self.batch_size,]
 
-						sigmoid, loss, result, accuracy, summary = self.sess.run(
-							[self.sigmoid_op,self.avg_loss_op, self.result_op, self.acc_op, summary_op], 
-							feed_dict={self.input_placeholder: images, self.output_placeholder: label})
-						print("{}: Testing loss: {}".format(datetime.datetime.now(),loss))
-						# print("{}: accuracy: {}".format(datetime.datetime.now(),accuracy))
-						print("{}: ground truth: {}".format(datetime.datetime.now(),label[:5]))
-						print("{}: result: {}".format(datetime.datetime.now(),result[:5]))
-						print("{}: sigmoid: {}".format(datetime.datetime.now(),sigmoid[:5]))
+							sigmoid, loss, result, accuracy, summary = self.sess.run(
+								[self.sigmoid_op,self.avg_loss_op, self.result_op, self.acc_op, summary_op], 
+								feed_dict={
+									self.input_placeholder: images, 
+									self.output_placeholder: label,
+									self.dropout_placeholder: self.network_dropout_rate,
+									self.network.is_training: True})
+							print("{}: Testing loss: {}".format(datetime.datetime.now(),loss))
+							# print("{}: accuracy: {}".format(datetime.datetime.now(),accuracy))
+							print("{}: ground truth: {}".format(datetime.datetime.now(),label[:5]))
+							print("{}: result: {}".format(datetime.datetime.now(),result[:5]))
+							print("{}: sigmoid: {}".format(datetime.datetime.now(),sigmoid[:5]))
 
-						test_summary_writer.add_summary(summary, global_step=tf.train.global_step(self.sess, self.global_step))
-						test_summary_writer.flush()
+							test_summary_writer.add_summary(summary, global_step=tf.train.global_step(self.sess, self.global_step))
+							test_summary_writer.flush()
 
 				except tf.errors.OutOfRangeError:
 					start_epoch_inc.op.run()
-					self.network.is_training = False
+					# self.network.is_training = False
 
 					print("{}: Saving checkpoint of epoch {} at {}...".format(datetime.datetime.now(),epoch+1,self.ckpt_dir))
 					if not (os.path.exists(self.ckpt_dir)):
@@ -594,7 +629,8 @@ class MedicalImageClassifier(object):
 			print(images_np.shape)
 
 			sigmoid = sess.run(['Sigmoid:0'], feed_dict={
-						'Placeholder:0': images_np})
+						'Placeholder:0': images_np,
+						'keep_prob:0':1.0})
 
 			print("{}: Evaluation of {} complete:".format(datetime.datetime.now(), case))
 			for i in range(self.class_names):
