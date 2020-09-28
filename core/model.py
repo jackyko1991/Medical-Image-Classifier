@@ -527,7 +527,7 @@ class MedicalImageClassifier(object):
 								feed_dict={
 									self.input_placeholder: images, 
 									self.output_placeholder: label,
-									self.dropout_placeholder: self.network_dropout_rate,
+									self.dropout_placeholder: 0.0,
 									self.network.is_training: True})
 							print("{}: Testing loss: {}".format(datetime.datetime.now(),loss))
 							# print("{}: accuracy: {}".format(datetime.datetime.now(),accuracy))
