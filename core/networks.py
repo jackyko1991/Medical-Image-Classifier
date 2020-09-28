@@ -42,7 +42,6 @@ class Lenet2D(object):
 		if activation_fn == "relu":
 			conv = tf.nn.relu(conv)
 
-		# conv = tf.nn.dropout(conv, self.keep_prob)
 		conv = tf.nn.dropout(conv, rate=self.dropout)
 		pool = tf.nn.max_pool2d(conv, ksize=[1,2,2,1], strides=[1,2,2,1], padding = 'VALID')
 		return pool
@@ -903,7 +902,7 @@ class InceptionNet2D(object):
 			output = tf.reshape(output, [-1, output.get_shape()[1]*output.get_shape()[2]*output.get_shape()[3]])
 			output = tf.layers.dense(inputs=output,units=1024, activation=self.activation_fn)
 			output = tf.layers.batch_normalization(output, momentum=0.99, epsilon=0.001,center=True, scale=True,training=self.is_training)
-			output = tf.nn.dropout(output, dropout)
+			output = tf.nn.dropout(output, rate=dropout)
 			output = tf.layers.dense(inputs=output,units=self.num_classes, activation=None)
 
 		return output
@@ -961,7 +960,7 @@ class InceptionNet2D(object):
 			output = tf.reshape(output, [-1, output.get_shape()[1]*output.get_shape()[2]*output.get_shape()[3]])
 			output = tf.layers.dense(inputs=output,units=1024, activation=self.activation_fn)
 			output = tf.layers.batch_normalization(output, momentum=0.99, epsilon=0.001,center=True, scale=True,training=self.is_training)
-			output = tf.nn.dropout(output, dropout)
+			output = tf.nn.dropout(output, rate=dropout)
 			output = tf.layers.dense(inputs=output,units=self.num_classes, activation=None)
 
 		return output
