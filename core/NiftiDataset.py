@@ -753,7 +753,46 @@ class MaximumIntensityProjection(object):
 			for axis in self.axises:
 				return
 
+class CropCenter2D(object):
+	"""
+	Crop the 2D image to center in a sample. This is usually used for model prediction.
 
+	Args:
+	output_size (tuple or int): Desired output size. If int, cubic crop is made.
+	"""
+
+	def __init__(self, output_size):
+		self.name = 'Crop Center'
+
+		assert isinstance(output_size, (int, tuple, list))
+		if isinstance(output_size, int):
+			self.output_size = (output_size, output_size)
+		else:
+			assert len(output_size) == 2
+			self.output_size = output_size
+
+	def __call__(self,sample):
+		images = sample['images']
+
+		for image_channel in range(len(images)):
+			output_size = tuple(self.output_size)
+
+			image_center = images[0].TransformIndexToPhysicalPoint([round(images[0].GetSize()[0]/2),round(images[0].GetSize()[1]/2)])
+			new_origin = [0,0]
+			new_origin[0] = image_center[0]-output_size[0]/2*images[0].GetSpacing()[0]
+			new_origin[1] = image_center[1]-output_size[1]/2*images[0].GetSpacing()[1]
+
+			resampler = sitk.ResampleImageFilter()
+			resampler.SetOutputSpacing(images[0].GetSpacing())
+			resampler.SetSize(output_size)
+
+			# resample on image
+			resampler.SetInterpolator(2)
+			resampler.SetOutputOrigin(new_origin)
+			resampler.SetOutputDirection(images[0].GetDirection())
+			images[image_channel] = resampler.Execute(images[image_channel])
+
+		return {'images': images}
 
 # class ConfidenceCrop(object):
 # 	"""

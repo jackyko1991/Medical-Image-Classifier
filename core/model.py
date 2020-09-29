@@ -9,6 +9,10 @@ import os
 import shutil
 import math
 import multiprocessing
+from tqdm import tqdm
+import pandas as pd
+from utils.report import report
+import SimpleITK as sitk
 
 class MedicalImageClassifier(object):
 	def __init__(self,sess,config):
@@ -92,6 +96,8 @@ class MedicalImageClassifier(object):
 		self.model_path = self.config['PredictionSetting']['ModelPath']
 		self.checkpoint_path = self.config['PredictionSetting']['CheckPointPath']
 		self.evaluation_data_dir = self.config['PredictionSetting']['Data']['EvaluationDataDirectory']
+		self.report_output = self.config['PredictionSetting']['ReportOutput']
+		self.evaluation_output_filename = self.config['PredictionSetting']['Data']['OutputFilename']
 
 	def dataset_iterator(self,data_dir,transforms,train=True):
 		# Force input pipepline to CPU:0 to avoid operations sometimes ended up at GPU and resulting a slow down
@@ -558,31 +564,37 @@ class MedicalImageClassifier(object):
 			test_summary_writer.close()
 
 	def predict(self):
-		sys.exit("Developing...")
-
 		# read config to class variables
 		self.read_config()
 
 		# restore model grpah
-		tf.reset_default_graph()
+		# tf.reset_default_graph()
 		imported_meta = tf.train.import_meta_graph(self.model_path)
 
 		# create transformation to image
-		transforms = [
-			NiftiDataset.Normalization()
-		]
+		predict_transforms = transforms.predict_transforms(self.spacing, self.patch_shape)
 
 		print("{}: Start evaluation...".format(datetime.datetime.now()))
 
 		imported_meta.restore(self.sess, self.checkpoint_path)
 		print("{}: Restore checkpoint success".format(datetime.datetime.now()))
 
-		for case in os.listdir(self.evaluation_data_dir):
+		# create output csv file
+		columns = ['case']
+		for class_name in self.class_names:
+			columns.append(class_name)
+
+		output_df = pd.DataFrame(columns=columns)
+
+		pbar = tqdm(os.listdir(self.evaluation_data_dir))
+		for case in pbar:
+			pbar.set_description(case)
+
 			# check image data exists
 			image_paths = []
 			image_file_exists = True
 			for image_channel in range(self.input_channel_num):
-				image_paths.append(os.path.join(self.evaluation_data_dir,case,json_config['PredictionSetting']['Data']['ImageFilenames'][image_channel]))
+				image_paths.append(os.path.join(self.evaluation_data_dir,case,self.config['PredictionSetting']['Data']['ImageFilenames'][image_channel]))
 
 				if not os.path.exists(image_paths[image_channel]):
 					image_file_exists = False
@@ -608,8 +620,12 @@ class MedicalImageClassifier(object):
 
 			sample = {'images':images_tfm}
 
-			# for transform in transforms:
-			# 	sample = transform(sample)
+			for predict_tfm in predict_transforms:
+				try:
+					sample = predict_tfm(sample)
+				except:
+					tqdm.write("Dataset preprocessing error: {}: {}".format(case,predict_tfm.name))
+					exit()
 
 			images_tfm = sample['images']
 
@@ -617,21 +633,39 @@ class MedicalImageClassifier(object):
 			for image_channel in range(self.input_channel_num):
 				image_ = sitk.GetArrayFromImage(images_tfm[image_channel])
 				image_ = np.asarray(image_,np.float32)
-				# to unify matrix dimension order between SimpleITK([x,y,z]) and numpy([z,y,x])
-				image_ = np.transpose(image_,(2,1,0))
-				if image_ == 0:
-					images_np = image_[:,:,:,np.newaxis]
-				else:
-					images_np = np.append(images_np, image_[:,:,:,np.newaxis], axis=-1)
 
-			images_np = images_np[np.newaxis,:,:,:,:]
+				if self.dimension == 2:
+					if image_channel == 0:
+						images_np = image_[:,:,np.newaxis]
+					else:
+						images_np = np.append(images_np, image_[:,:,np.newaxis], axis=-1)
+				elif self.dimension == 3:
+					# to unify matrix dimension order between SimpleITK([x,y,z]) and numpy([z,y,x])
+					image_ = np.transpose(image_,(2,1,0))
+					if image_channel == 0:
+						images_np = image_[:,:,:,np.newaxis]
+					else:
+						images_np = np.append(images_np, image_[:,:,:,np.newaxis], axis=-1)
 
-			print(images_np.shape)
+			images_np = images_np[np.newaxis,]
 
-			sigmoid = sess.run(['Sigmoid:0'], feed_dict={
+			sigmoid = self.sess.run(['Sigmoid:0'], feed_dict={
 						'Placeholder:0': images_np,
-						'keep_prob:0':1.0})
+						'dropout:0':0.0,
+						'train_phase_placeholder:0':True})
 
-			print("{}: Evaluation of {} complete:".format(datetime.datetime.now(), case))
-			for i in range(self.class_names):
-				print("{}: {}%".format(self.class_names[i],sigmoid[i]))
+			output = {'case': case}
+			for channel in range(self.output_channel_num):
+				output[self.class_names[channel]] = sigmoid[channel]
+			output_df = output_df.append(output, ignore_index=True)
+
+			if self.report_output:
+				doc = report.Report(images=images,result=sigmoid[0],class_names=self.class_names)
+				doc.WritePdf(os.path.join(self.evaluation_data_dir,case,"report"))
+
+			tqdm.write("{}: Evaluation of {} complete:".format(datetime.datetime.now(), case))
+			for i in range(self.output_channel_num):
+				tqdm.write("{}: {}%".format(self.class_names[i],sigmoid[0][i]*100))
+
+		# write csv
+		output_df.to_csv(self.evaluation_output_filename,index=False)

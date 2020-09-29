@@ -342,7 +342,6 @@ class InceptionNet2D(object):
 		name="",
 		linear_factorization=False,
 		linear_kernel_size=3,
-		residual=False,
 		wide_module=False,
 		pool_type="max",
 		strides=[1,1,1,1]
@@ -405,20 +404,16 @@ class InceptionNet2D(object):
 					conv_5x5_4 = self.ConvActivate2d_block(conv_5x5_2, [1,linear_kernel_size,channels_5x5*2,channels_5x5],strides=strides,padding='SAME',name="5x5_4",is_training=self.is_training)
 					filters.extend([conv_5x5_3,conv_5x5_4])
 
-			if residual == False:
-				if pool_type == "max":
-					pool = tf.nn.max_pool2d(input_tensor, ksize=[1,3,3,1], strides=strides, padding = 'SAME',name='pool')
-				elif pool_type == "avg":
-					pool = tf.nn.avg_pool(input_tensor, ksize=[1,3,3,1], strides=strides, padding = 'SAME',name='pool')
-				if channels_pool > 0:
-					# will passthrough if channels_pool == 0
-					pool = self.ConvActivate2d_block(pool, [1,1,input_channels,channels_pool], padding='SAME',name="pool_conv",is_training=self.is_training)
-				filters.append(pool)
+			if pool_type == "max":
+				pool = tf.nn.max_pool2d(input_tensor, ksize=[1,3,3,1], strides=strides, padding = 'SAME',name='pool')
+			elif pool_type == "avg":
+				pool = tf.nn.avg_pool(input_tensor, ksize=[1,3,3,1], strides=strides, padding = 'SAME',name='pool')
+			if channels_pool > 0:
+				# will passthrough if channels_pool == 0
+				pool = self.ConvActivate2d_block(pool, [1,1,input_channels,channels_pool], padding='SAME',name="pool_conv",is_training=self.is_training)
+			filters.append(pool)
 
-				output = tf.concat(filters,axis=3,name="output")
-			else:
-				output = tf.concat(filters,axis=3,name="branch_merge")
-				output = self.ConvActivate2d_block(output, [1,1,int(output.get_shape()[-1]),256])
+			output = tf.concat(filters,axis=-1,name="output")
 
 		return output
 
@@ -612,7 +607,7 @@ class InceptionNet2D(object):
 			if batch_norm:
 				x = tf.layers.batch_normalization(x, momentum=0.99, epsilon=0.001,center=True, scale=True,training=self.is_training)
 			x = tf.nn.dropout(x, dropout)
-			x = tf.layers.dense(inputs=x,units=self.num_classes, activation=None)
+			x = tf.layers.dense(inputs=x,units=self.num_classes, activation=self.activation_fn)
 		return x
 
 	def InceptionV1(self,input_image,dropout=0.0):
@@ -660,7 +655,7 @@ class InceptionNet2D(object):
 			aux_3 = tf.reshape(aux_3, [-1, aux_3.get_shape()[1]*aux_3.get_shape()[2]*aux_3.get_shape()[3]])
 			aux_3 = tf.layers.dense(inputs=aux_3,units=1024, activation=self.activation_fn)
 			aux_3 = tf.nn.dropout(aux_3, rate=dropout)
-			aux_3 = tf.layers.dense(inputs=aux_3,units=self.num_classes, activation=None)
+			aux_3 = tf.layers.dense(inputs=aux_3,units=self.num_classes, activation=self.activation_fn)
 			aux.append(aux_3)
 
 			# linear combination of auxiliary outputs
@@ -722,7 +717,7 @@ class InceptionNet2D(object):
 			aux_3 = tf.reshape(aux_3, [-1, aux_3.get_shape()[1]*aux_3.get_shape()[2]*aux_3.get_shape()[3]])
 			aux_3 = tf.layers.dense(inputs=aux_3,units=1024, activation=self.activation_fn)
 			aux_3 = tf.nn.dropout(aux_3, rate=dropout)
-			aux_3 = tf.layers.dense(inputs=aux_3,units=self.num_classes, activation=None)
+			aux_3 = tf.layers.dense(inputs=aux_3,units=self.num_classes, activation=self.activation_fn)
 			aux.append(aux_3)
 
 			# linear combination of auxiliary outputs
@@ -788,7 +783,7 @@ class InceptionNet2D(object):
 			aux_2 = tf.layers.dense(inputs=aux_2,units=1024, activation=self.activation_fn)
 			aux_2 = tf.layers.batch_normalization(aux_2, momentum=0.99, epsilon=0.001,center=True, scale=True,training=self.is_training)
 			aux_2 = tf.nn.dropout(aux_2, rate=dropout)
-			aux_2 = tf.layers.dense(inputs=aux_2,units=self.num_classes, activation=None)
+			aux_2 = tf.layers.dense(inputs=aux_2,units=self.num_classes, activation=self.activation_fn)
 			aux.append(aux_2)
 
 			# linear combination of auxiliary outputs
@@ -853,7 +848,7 @@ class InceptionNet2D(object):
 			aux_2 = tf.layers.dense(inputs=aux_2,units=1024, activation=self.activation_fn)
 			aux_2 = tf.layers.batch_normalization(aux_2, momentum=0.99, epsilon=0.001,center=True, scale=True,training=self.is_training)
 			aux_2 = tf.nn.dropout(aux_2, rate=dropout)
-			aux_2 = tf.layers.dense(inputs=aux_2,units=self.num_classes, activation=None)
+			aux_2 = tf.layers.dense(inputs=aux_2,units=self.num_classes, activation=self.activation_fn)
 			aux.append(aux_2)
 
 			# linear combination of auxiliary outputs

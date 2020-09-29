@@ -39,8 +39,10 @@ Currently the classifier provides following classification networks:
 ### Required Libraries
 Known good dependencies:
 - Anaconda 3.6
-- Tensorflow 1.12
+- Tensorflow 1.15
 - SimpleITK
+- tqdm
+- pylatex (for PDF report output)
 
 ### Software Configuration
 All necessary network configurations are stored in `config.json` except for GPU specification. Modify the `config.json` file to fit your application.
@@ -96,7 +98,7 @@ By default the software use the 0th GPU in the system. Use argument option `--gp
 1. Put all the data in accordance to [Folder Hierarchy](#folder-hierarchy)
 2. Run the command:
 	```bash
-	python main.py -p TRAIN --gpu 0 --config_json=./configs/config.json
+	python main.py -p TRAIN --gpu 0
 	```
 3. Open Tensorboard:
 	```bash
