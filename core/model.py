@@ -381,10 +381,15 @@ class MedicalImageClassifier(object):
 			else:
 				sys.exit('Invalid Optimizer')
 
+			# for batch norm to function normally
+			update_ops = tf.compat.v1.get_collection(tf.GraphKeys.UPDATE_OPS)
+
 			train_op = optimizer.minimize(
 				loss=self.avg_loss_op,
 				global_step=self.global_step
 				)
+
+			train_op = tf.group([train_op, update_ops])
 
 		start_epoch = tf.get_variable("start_epoch", shape=[1], initializer=tf.zeros_initializer, dtype=tf.int32)
 		start_epoch_inc = start_epoch.assign(start_epoch+1)
@@ -483,7 +488,7 @@ class MedicalImageClassifier(object):
 						self.input_placeholder: images,
 						self.output_placeholder: label,
 						self.dropout_placeholder: 0.0,
-						self.network.is_training: True
+						self.network.is_training: False
 						})
 
 					train_summary_writer.add_summary(summary,global_step=tf.train.global_step(self.sess,self.global_step))
@@ -528,21 +533,21 @@ class MedicalImageClassifier(object):
 							images = images[:self.batch_size,]
 							label = label[:self.batch_size,]
 
-							sigmoid, loss, result, accuracy, summary = self.sess.run(
-								[self.sigmoid_op,self.avg_loss_op, self.result_op, self.acc_op, summary_op], 
-								feed_dict={
-									self.input_placeholder: images, 
-									self.output_placeholder: label,
-									self.dropout_placeholder: 0.0,
-									self.network.is_training: True})
-							print("{}: Testing loss: {}".format(datetime.datetime.now(),loss))
-							# print("{}: accuracy: {}".format(datetime.datetime.now(),accuracy))
-							print("{}: ground truth: {}".format(datetime.datetime.now(),label[:5]))
-							print("{}: result: {}".format(datetime.datetime.now(),result[:5]))
-							print("{}: sigmoid: {}".format(datetime.datetime.now(),sigmoid[:5]))
+						sigmoid, loss, result, accuracy, summary = self.sess.run(
+							[self.sigmoid_op,self.avg_loss_op, self.result_op, self.acc_op, summary_op], 
+							feed_dict={
+								self.input_placeholder: images, 
+								self.output_placeholder: label,
+								self.dropout_placeholder: 0.0,
+								self.network.is_training: False})
+						print("{}: Testing loss: {}".format(datetime.datetime.now(),loss))
+						# print("{}: accuracy: {}".format(datetime.datetime.now(),accuracy))
+						print("{}: ground truth: {}".format(datetime.datetime.now(),label[:5]))
+						print("{}: result: {}".format(datetime.datetime.now(),result[:5]))
+						print("{}: sigmoid: {}".format(datetime.datetime.now(),sigmoid[:5]))
 
-							test_summary_writer.add_summary(summary, global_step=tf.train.global_step(self.sess, self.global_step))
-							test_summary_writer.flush()
+						test_summary_writer.add_summary(summary, global_step=tf.train.global_step(self.sess, self.global_step))
+						test_summary_writer.flush()
 
 				except tf.errors.OutOfRangeError:
 					start_epoch_inc.op.run()
@@ -652,7 +657,7 @@ class MedicalImageClassifier(object):
 			sigmoid = self.sess.run(['Sigmoid:0'], feed_dict={
 						'Placeholder:0': images_np,
 						'dropout:0':0.0,
-						'train_phase_placeholder:0':True})
+						'train_phase_placeholder:0':False})
 
 			output = {'case': case}
 			for channel in range(self.output_channel_num):
