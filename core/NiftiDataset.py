@@ -85,8 +85,6 @@ class NiftiDataset(object):
 
 		# cast images
 		for channel in range(len(images)):
-			print(self.image_filenames[channel],images[channel].GetPixelIDTypeAsString())
-
 			castImageFilter = sitk.CastImageFilter()
 			castImageFilter.SetOutputPixelType(sitk.sitkFloat32)
 			images[channel] = castImageFilter.Execute(images[channel])
