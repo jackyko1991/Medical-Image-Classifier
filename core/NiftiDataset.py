@@ -85,6 +85,8 @@ class NiftiDataset(object):
 
 		# cast images
 		for channel in range(len(images)):
+			print(self.image_filenames[channel],images[channel].GetPixelIDTypeAsString())
+
 			castImageFilter = sitk.CastImageFilter()
 			castImageFilter.SetOutputPixelType(sitk.sitkFloat32)
 			images[channel] = castImageFilter.Execute(images[channel])
@@ -174,21 +176,21 @@ class StatisticalNormalization(object):
 	def __call__(self, sample):
 		images = sample['images']
 
-		for image_channel in range(len(image)):
+		for image_channel in range(len(images)):
 			if self.pre_norm:
 				normalFilter= sitk.NormalizeImageFilter()
-				image[image_channel] = normalFilter.Execute(image[image_channel])
+				images[image_channel] = normalFilter.Execute(images[image_channel])
 
 			statisticsFilter = sitk.StatisticsImageFilter()
-			statisticsFilter.Execute(image[image_channel])
+			statisticsFilter.Execute(images[image_channel])
 
 			intensityWindowingFilter = sitk.IntensityWindowingImageFilter()
 			intensityWindowingFilter.SetOutputMaximum(255)
 			intensityWindowingFilter.SetOutputMinimum(0)
-			intensityWindowingFilter.SetWindowMaximum(statisticsFilter.GetMean()+self.sigma*statisticsFilter.GetSigma());
-			intensityWindowingFilter.SetWindowMinimum(statisticsFilter.GetMean()-self.sigma*statisticsFilter.GetSigma());
+			intensityWindowingFilter.SetWindowMaximum(statisticsFilter.GetMean()+self.sigma*statisticsFilter.GetSigma())
+			intensityWindowingFilter.SetWindowMinimum(statisticsFilter.GetMean()-self.sigma*statisticsFilter.GetSigma())
 
-			image[image_channel] = intensityWindowingFilter.Execute(image[image_channel])
+			images[image_channel] = intensityWindowingFilter.Execute(images[image_channel])
 
 		return {'images': images}
 
@@ -280,12 +282,10 @@ class ManualNormalization(object):
 	Normalize an image by mapping intensity with given max and min window level
 	"""
 
-	def __init__(self,windowMin, windowMax):
+	def __init__(self,windowMinMaxList):
 		self.name = 'ManualNormalization'
-		assert isinstance(windowMax, (int,float))
-		assert isinstance(windowMin, (int,float))
-		self.windowMax = windowMax
-		self.windowMin = windowMin
+		assert isinstance(windowMinMaxList, list)
+		self.windowMinMaxList = windowMinMaxList
 
 	def __call__(self, sample):
 		images = sample['images']
@@ -294,8 +294,8 @@ class ManualNormalization(object):
 			intensityWindowingFilter = sitk.IntensityWindowingImageFilter()
 			intensityWindowingFilter.SetOutputMaximum(255)
 			intensityWindowingFilter.SetOutputMinimum(0)
-			intensityWindowingFilter.SetWindowMaximum(self.windowMax);
-			intensityWindowingFilter.SetWindowMinimum(self.windowMin);
+			intensityWindowingFilter.SetWindowMaximum(self.windowMinMaxList[channel][1])
+			intensityWindowingFilter.SetWindowMinimum(self.windowMinMaxList[channel][0])
 			images[channel] = intensityWindowingFilter.Execute(images[channel])
 
 		return {'images': images}
@@ -722,7 +722,7 @@ class RandomNoise(object):
 	"""
 	Randomly add noise to the source image in a sample. This is usually used for data augmentation.
 	"""
-	def __init__(self,std=0.1):
+	def __init__(self,std=[0.1]):
 		self.name = 'Random Noise'
 		self.std = std
 
@@ -733,7 +733,7 @@ class RandomNoise(object):
 		for image_channel in range(len(images)):
 			noiseFilter = sitk.AdditiveGaussianNoiseImageFilter()
 			noiseFilter.SetMean(0)
-			noiseFilter.SetStandardDeviation(self.std)
+			noiseFilter.SetStandardDeviation(self.std[image_channel])
 			images[image_channel] = noiseFilter.Execute(images[image_channel])		
 
 		return {'images': images}
