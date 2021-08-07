@@ -719,19 +719,24 @@ class RandomCrop3D(object):
 class RandomNoise(object):
 	"""
 	Randomly add noise to the source image in a sample. This is usually used for data augmentation.
+	
+	Args:
+	noise_factor (float): s.d. of additive Gaussian noise = image s.d. * noise_factor
 	"""
-	def __init__(self,std=[0.1]):
+	def __init__(self,noise_factor=0.05):
 		self.name = 'Random Noise'
-		self.std = std
+		self.noise_factor = noise_factor
 
 	def __call__(self, sample):
-		# print("Normalizing image...")
 		images = sample['images']
 
 		for image_channel in range(len(images)):
+			statFilter = sitk.StatisticsImageFilter()
+			statFilter.Execute(images[image_channel])
+
 			noiseFilter = sitk.AdditiveGaussianNoiseImageFilter()
 			noiseFilter.SetMean(0)
-			noiseFilter.SetStandardDeviation(self.std[image_channel])
+			noiseFilter.SetStandardDeviation(statFilter.GetSigma()*self.noise_factor)
 			images[image_channel] = noiseFilter.Execute(images[image_channel])		
 
 		return {'images': images}

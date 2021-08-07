@@ -27,12 +27,12 @@ def test_transforms2D(spacing,patch_shape):
 
 def train_transforms3D(spacing, patch_shape):
 	transforms = [
-		NiftiDataset.RandomNoise([2.5,0.01]),
+		NiftiDataset.RandomNoise(0.05),
 		# NiftiDataset.Normalization(),
 		NiftiDataset.ManualNormalization([[0,800],[0,5]]),
 		# NiftiDataset.StatisticalNormalization(2.5),
 		NiftiDataset.Resample3D(spacing),
-		NiftiDataset.Padding3D(patch_shape,center=False),
+		NiftiDataset.Padding3D(patch_shape),
 		NiftiDataset.RandomCrop3D(patch_shape),
 		#NiftiDataset.RandomRotate3D(),
 		]
@@ -41,12 +41,12 @@ def train_transforms3D(spacing, patch_shape):
 	
 def test_transforms3D(spacing, patch_shape):
 	transforms = [
-		NiftiDataset.RandomNoise([2.5,0.01]),
+		NiftiDataset.RandomNoise(0.05),
 		# NiftiDataset.Normalization(),
 		NiftiDataset.ManualNormalization([[0,800],[0,5]]),
 		# NiftiDataset.StatisticalNormalization(2.5),
 		NiftiDataset.Resample3D(spacing),
-		NiftiDataset.Padding3D(patch_shape,center=False),
+		NiftiDataset.Padding3D(patch_shape),
 		NiftiDataset.RandomCrop3D(patch_shape),
 		]
 
