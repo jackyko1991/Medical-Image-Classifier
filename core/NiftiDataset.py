@@ -540,7 +540,7 @@ class Padding2D(object):
 				image_center = images[0].TransformIndexToPhysicalPoint([round(images[0].GetSize()[0]/2),round(images[0].GetSize()[1]/2)])
 				new_origin = [0,0]
 				for i in range(2):
-					new_origin[i] = image_center[i] - output_size[i]/2*images[0].GetSpacing()[i]
+					new_origin[i] = image_center[i] - images[0].GetDirection()[i*2+i]*output_size[i]/2*images[0].GetSpacing()[i]
 
 			for image_channel in range(len(images)):
 				resampler = sitk.ResampleImageFilter()
@@ -604,7 +604,7 @@ class Padding3D(object):
 				image_center = images[0].TransformIndexToPhysicalPoint([round(images[0].GetSize()[0]/2),round(images[0].GetSize()[1]/2),round(images[0].GetSize()[2]/2)])
 				new_origin = [0,0,0]
 				for i in range(3):
-					new_origin[i] = image_center[i] - output_size[i]/2*images[0].GetSpacing()[i]
+					new_origin[i] = image_center[i] - images[0].GetDirection()[i*3+i]*output_size[i]/2*images[0].GetSpacing()[i]
 
 			for image_channel in range(len(images)):
 				resampler = sitk.ResampleImageFilter()
