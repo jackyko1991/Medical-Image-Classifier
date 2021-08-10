@@ -30,6 +30,9 @@
         "MaxSteps": 300000,
         "LogInterval": 50,
         "TestingStepInterval":10,
+        "LossFunctioni":{
+            "Name": "sorensen"
+        },
         "Optimizer":{
             "Name": "Momentum",
             "InitialLearningRate": 1e-3,
