@@ -1045,10 +1045,85 @@ class Vgg2D(object):
 						x = self.ConvActivate2d_block(x, convFilter_shape, is_training = self.is_training)
 
 				with tf.variable_scope('max_pool'):
-					x = tf.nn.max_pool(x, ksize=[1,2,2,1], strides=[1,2,2,1], padding='VALID')
+					x = tf.nn.max_pool2d(x, ksize=[1,2,2,1], strides=[1,2,2,1], padding='VALID')
 
 		with tf.variable_scope('Vgg/fully_connected'):
 			x = tf.reshape(x, [-1, x.get_shape()[1]*x.get_shape()[2]*x.get_shape()[3]])
+
+			for channel in self.fc_channels:
+				x = tf.layers.dense(inputs=x,units=channel, activation=self.activation_fn)
+				x = tf.layers.batch_normalization(x, momentum=self.batch_norm_momentum, epsilon=0.001,center=True, scale=True,training=self.is_training)
+		
+			logits = tf.layers.dense(inputs=x,units=self.num_classes, activation=None)
+
+		return logits
+
+class Vgg3D(object):
+	def __init__(self,
+		num_classes,
+		num_channels=64,
+		is_training=True,
+		activation_fn="relu",
+		dropout=0.0,
+		module_config=[2,2,3,3,3],
+		batch_norm_momentum=0.99,
+		fc_channels=[4096,4096]):
+		"""
+		Implements Vgg in 3D
+		:param num_classes: Number of output classes.
+		:param num_channels: Number of feature channels.
+		:param is_training: Set network in training mode.
+		:param activation_fn: The activation function.
+		:param dropout: Dropout probability, set to 0.0 if not training or if no dropout is desired.
+		:param module_config: Number of residual blocks that separates by subsampling convolution layers
+		:param batch_norm_momentum: Momentum for batch normalization layer
+		:param fc_channels: Channel number for fully connected layers except last one
+		"""
+		self.num_classes = num_classes
+		# self.is_training = is_training
+		self.is_training = tf.placeholder(tf.bool, name="train_phase_placeholder")
+		if (activation_fn == "relu"):
+			self.activation_fn = tf.nn.relu
+		else:
+			print("Invalid activation function")
+			exit()
+		self.dropout = dropout
+		self.module_config = module_config
+		self.num_channels = num_channels
+		self.batch_norm_momentum = batch_norm_momentum
+		self.fc_channels = fc_channels
+
+	def ConvActivate3d_block(self, input_tensor, filterShape, strides = [1,1,1,1,1], is_training=True):
+		# keep_prob = self.keep_prob if self.is_training else 1.0
+		input_channels = int(input_tensor.get_shape()[-1])
+
+		conv_W = init_weight(filterShape)
+		conv_B = init_bias(filterShape[4])
+		conv = tf.nn.conv3d(input_tensor, conv_W, strides = strides, padding ='VALID') + conv_B
+		conv = tf.layers.batch_normalization(conv, momentum=self.batch_norm_momentum, epsilon=0.001,center=True, scale=True,training=0)
+		conv = self.activation_fn(conv)
+		conv = tf.nn.dropout(conv, rate=self.dropout)
+		return conv
+
+	def GetNetwork(self, input_image):
+		# keep_prob = self.keep_prob if self.is_training.eval() else 1.0
+
+		x = input_image
+		for module in range(len(self.module_config)):
+			with tf.variable_scope('Vgg/module' + str(module+1)):
+				for layer in range(self.module_config[module]):
+					with tf.variable_scope('conv_' + str(layer+1)):
+						paddings = tf.constant([[0,0],[1,1],[1,1],[1,1],[0,0]])
+						x = tf.pad(x, paddings, "CONSTANT")
+						input_channels = int(x.get_shape()[-1])
+						convFilter_shape = [3,3,3,input_channels, self.num_channels*(1+module)]
+						x = self.ConvActivate3d_block(x, convFilter_shape, is_training = self.is_training)
+
+				with tf.variable_scope('max_pool'):
+					x = tf.nn.max_pool3d(x, ksize=[1,2,2,2,1], strides=[1,2,2,2,1], padding='VALID')
+
+		with tf.variable_scope('Vgg/fully_connected'):
+			x = tf.reshape(x, [-1, x.get_shape()[1]*x.get_shape()[2]*x.get_shape()[3]*x.get_shape()[4]])
 
 			for channel in self.fc_channels:
 				x = tf.layers.dense(inputs=x,units=channel, activation=self.activation_fn)
