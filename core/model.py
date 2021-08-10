@@ -14,6 +14,17 @@ import pandas as pd
 from utils.report import report
 import SimpleITK as sitk
 
+def dice_loss(y_true, y_pred, epsilon=1e-7,reduce_axis=-1, loss_type="sorensen"):
+	numerator = 2 * tf.reduce_sum(y_true * y_pred, axis=reduce_axis)
+	if loss_type == "sorensen":
+		denominator = tf.reduce_sum(y_true + y_pred, axis=reduce_axis)
+	elif loss_type == "jaccard":
+		denominator = tf.reduce_sum(y_true*y_true + y_pred*y_pred, axis=reduce_axis)
+	else:
+		raise Exception("Unknown loss type")
+
+	return 1 - (numerator) / (denominator + epsilon)
+
 class MedicalImageClassifier(object):
 	def __init__(self,sess,config):
 		"""
@@ -92,6 +103,7 @@ class MedicalImageClassifier(object):
 		self.initial_learning_rate = self.config['TrainingSetting']['Optimizer']['InitialLearningRate']
 		self.decay_factor = self.config['TrainingSetting']['Optimizer']['Decay']['Factor']
 		self.decay_step = self.config['TrainingSetting']['Optimizer']['Decay']['Step']
+		self.loss_fn = self.config['TrainingSetting']['LossFunction']['Name']
 
 		self.model_path = self.config['PredictionSetting']['ModelPath']
 		self.checkpoint_path = self.config['PredictionSetting']['CheckPointPath']
@@ -249,11 +261,13 @@ class MedicalImageClassifier(object):
 			else:
 				self.network = networks.Vgg3D(
 					num_classes=self.output_channel_num,
-					num_channels=64,
+					# num_channels=64,
+					num_channels=32,
 					is_training=True,
 					activation_fn="relu",
 					dropout=self.dropout_placeholder,
-					module_config=[2,2,3,3,3],
+					# module_config=[2,2,3,3,3],
+					module_config=[2,3,3],
 					batch_norm_momentum=0.99,
 					fc_channels=[4096,4096])
 		elif self.network_name == "ResNet":
@@ -285,17 +299,24 @@ class MedicalImageClassifier(object):
 
 		if self.additional_features_num > 0:
 			dense0 = tf.concat([tf.nn.relu(self.logits_op),self.additional_features_placeholder],axis=1)
-			dense1 = tf.layers.dense(inputs=dense1,units=500, activation=self.activation_fn)
-			self.logits_additional_features_op = tf.layers.dense(inputs=dense1,units=self.num_classes, activation=None)
+			dense1 = tf.layers.dense(inputs=dense0,units=500, activation=self.activation_fn)
+			#self.logits_additional_features_op = tf.layers.dense(inputs=dense1,units=self.num_classes, activation=None)
+			self.logits_op = tf.layers.dense(inputs=dense1,units=self.num_classes, activation=None)
 
-		self.loss_op = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.logits_op,labels=self.output_placeholder),0)
+		self.sigmoid_op = tf.sigmoid(self.logits_op)
+		self.result_op = tf.cast(tf.math.round(self.sigmoid_op),dtype=tf.uint8)
+
+		if self.loss_fn == "xent":
+			self.sigmoid_xent = tf.nn.sigmoid_cross_entropy_with_logits(logits=self.logits_op,labels=self.output_placeholder)
+			self.loss_op = tf.reduce_mean(self.sigmoid_xent,0)
+		elif self.loss_fn == "sorensen":
+			self.loss_op = dice_loss(y_true=self.output_placeholder,y_pred=self.sigmoid_op)
+		elif self.loss_fn == "jaccard":
+			self.loss_op = dice_loss(y_true=self.output_placeholder,y_pred=self.sigmoid_op,loss_type="jaccard")
+
 		self.avg_loss_op = tf.reduce_mean(self.loss_op)
 		# self.avg_loss_op = tf.reduce_prod(self.loss_op)*(10**(len(self.class_names)-1))
 		# self.avg_loss_op = tf.reduce_prod(self.loss_op)
-
-		self.sigmoid_op = tf.sigmoid(self.logits_op)
-		self.result_op = tf.math.round(self.sigmoid_op)
-
 		# acc, self.acc_op = tf.metrics.accuracy(labels=self.output_placeholder, predictions=self.result_op)
 
 		tf.summary.scalar('loss/average', self.avg_loss_op)
@@ -312,20 +333,26 @@ class MedicalImageClassifier(object):
 		class_specificity = []
 
 		for i in range(len(self.class_names)):
-			class_acc, class_acc_op = tf.metrics.accuracy(labels=self.output_placeholder[i], predictions=self.result_op[i])
-			class_tp, class_tp_op = tf.metrics.true_positives(labels=self.output_placeholder[:,i], predictions=self.result_op[:,i])
-			class_tn, class_tn_op = tf.metrics.true_negatives(labels=self.output_placeholder[:,i], predictions=self.result_op[:,i])
-			class_fp, class_fp_op = tf.metrics.false_positives(labels=self.output_placeholder[:,i], predictions=self.result_op[:,i])
-			class_fn, class_fn_op = tf.metrics.false_negatives(labels=self.output_placeholder[:,i], predictions=self.result_op[:,i])
-			precision = class_tp_op/(class_tp_op+class_fp_op)
-			sensitivity = class_tp_op/(class_tp_op+class_fn_op)
-			specificity = class_tn_op/(class_tn_op+class_fp_op)
+			epsilon = 1e-6
+			class_acc, class_acc_op = tf.metrics.accuracy(labels=tf.cast(self.output_placeholder[:,i],dtype=tf.uint8), predictions=tf.cast(self.result_op[:,i],dtype=tf.uint8))
+			class_tp, class_tp_op = tf.metrics.true_positives(labels=tf.cast(self.output_placeholder[:,i],dtype=tf.uint8), predictions=tf.cast(self.result_op[:,i],dtype=tf.uint8))
+			class_tn, class_tn_op = tf.metrics.true_negatives(labels=tf.cast(self.output_placeholder[:,i],dtype=tf.uint8), predictions=tf.cast(self.result_op[:,i],dtype=tf.uint8))
+			class_fp, class_fp_op = tf.metrics.false_positives(labels=tf.cast(self.output_placeholder[:,i],dtype=tf.uint8), predictions=tf.cast(self.result_op[:,i],dtype=tf.uint8))
+			class_fn, class_fn_op = tf.metrics.false_negatives(labels=tf.cast(self.output_placeholder[:,i],dtype=tf.uint8), predictions=tf.cast(self.result_op[:,i],dtype=tf.uint8))
+			precision = class_tp_op/(class_tp_op+class_fp_op+epsilon)
+			sensitivity = class_tp_op/(class_tp_op+class_fn_op+epsilon)
+			specificity = class_tn_op/(class_tn_op+class_fp_op+epsilon)
 
-			accuracy = tf.where(tf.is_nan(class_acc_op), tf.ones_like(class_acc_op) * 0.5, class_acc_op)
-			precision = tf.where(tf.is_nan(precision), tf.ones_like(precision) * 0.5, precision)
-			sensitivity = tf.where(tf.is_nan(sensitivity), tf.ones_like(sensitivity) * 0.5, sensitivity)
-			specificity = tf.where(tf.is_nan(specificity), tf.ones_like(specificity) * 0.5, specificity)
-			class_auc, class_auc_op = tf.metrics.auc(labels=self.output_placeholder[:,i], predictions=self.result_op[:,i])
+			# # remove nan values
+			# nan_replace_value = 1.0
+			# accuracy = tf.where(tf.is_nan(class_acc_op), tf.ones_like(class_acc_op) * nan_replace_value, class_acc_op)
+			# precision = tf.where(tf.is_nan(precision), tf.ones_like(precision) * nan_replace_value, precision)
+			# sensitivity = tf.where(tf.is_nan(sensitivity), tf.ones_like(sensitivity) * nan_replace_value, sensitivity)
+			# specificity = tf.where(tf.is_nan(specificity), tf.ones_like(specificity) * nan_replace_value, specificity)
+
+			accuracy = class_acc_op
+
+			class_auc, class_auc_op = tf.metrics.auc(labels=self.output_placeholder[:,i], predictions=self.sigmoid_op[:,i])
 
 			self.class_tp.append(class_tp_op)
 			self.class_tn.append(class_tn_op)
@@ -477,11 +504,12 @@ class MedicalImageClassifier(object):
 							self.output_placeholder: label,
 							self.dropout_placeholder: self.network_dropout_rate,
 							self.network.is_training: True})
-					print("{}: Training loss: {}".format(datetime.datetime.now(),loss))
-					# print("{}: accuracy: {}".format(datetime.datetime.now(),accuracy))
-					print("{}: ground truth: {}".format(datetime.datetime.now(),label[:5]))
-					print("{}: result: {}".format(datetime.datetime.now(),result[:5]))
-					print("{}: sigmoid: {}".format(datetime.datetime.now(),sigmoid[:5]))
+					print("{}: Training loss: {:.4f}".format(datetime.datetime.now(),loss))
+					print("{}: accuracy: {:.4f}".format(datetime.datetime.now(),accuracy))
+					print("{}: ground truth: \n{}".format(datetime.datetime.now(),label[:5]))
+					print("{}: result: \n{}".format(datetime.datetime.now(),result[:5]))
+					#print("{}: sigmoid xent: {}".format(datetime.datetime.now(),sigmoid_xent[:10]))
+					print("{}: sigmoid: \n{}".format(datetime.datetime.now(),sigmoid[:5]))
 
 					# perform summary log after training op
 					summary = self.sess.run(summary_op,feed_dict={
@@ -540,11 +568,11 @@ class MedicalImageClassifier(object):
 								self.output_placeholder: label,
 								self.dropout_placeholder: 0.0,
 								self.network.is_training: False})
-						print("{}: Testing loss: {}".format(datetime.datetime.now(),loss))
-						# print("{}: accuracy: {}".format(datetime.datetime.now(),accuracy))
-						print("{}: ground truth: {}".format(datetime.datetime.now(),label[:5]))
-						print("{}: result: {}".format(datetime.datetime.now(),result[:5]))
-						print("{}: sigmoid: {}".format(datetime.datetime.now(),sigmoid[:5]))
+						print("{}: Testing loss: {:.4f}".format(datetime.datetime.now(),loss))
+						print("{}: accuracy: {:.4f}".format(datetime.datetime.now(),accuracy))
+						print("{}: ground truth: \n{}".format(datetime.datetime.now(),label[:5]))
+						print("{}: result: \n{}".format(datetime.datetime.now(),result[:5]))
+						print("{}: sigmoid: \n{}".format(datetime.datetime.now(),sigmoid[:5]))
 
 						test_summary_writer.add_summary(summary, global_step=tf.train.global_step(self.sess, self.global_step))
 						test_summary_writer.flush()

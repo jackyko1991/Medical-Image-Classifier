@@ -30,7 +30,7 @@
         "MaxSteps": 300000,
         "LogInterval": 50,
         "TestingStepInterval":10,
-        "LossFunctioni":{
+        "LossFunction":{
             "Name": "sorensen"
         },
         "Optimizer":{
