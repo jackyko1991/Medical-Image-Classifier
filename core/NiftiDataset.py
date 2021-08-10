@@ -54,22 +54,23 @@ class NiftiDataset(object):
 		self.case_column_name = case_column_name
 
 	def get_dataset(self):
-		image_dirs = []
-
 		# read labels from csv file
-		self.label_df = pd.read_csv(self.label_filename)
+		self.label_df = pd.read_csv(self.label_filename,converters={self.case_column_name: lambda x: str(x)})
 
 		# read additional features from csv file
 		if self.additional_features_filename is not None:
-			self.additional_features_df = pd.read_csv(self.additional_features_filename)
+			self.additional_features_df = pd.read_csv(self.additional_features_filename,converters={self.case_column_name: lambda x: str(x)})
 
-		dataset = tf.data.Dataset.from_tensor_slices(os.listdir(self.data_dir))
+		data_list = os.listdir(self.data_dir)
+		random.shuffle(data_list)
+
+		dataset = tf.data.Dataset.from_tensor_slices(data_list)
 		dataset = dataset.map(lambda case: tuple(tf.py_function(
 			func=self.input_parser, inp=[case], Tout=[tf.float32,tf.int64])),
 			# num_parallel_calls=multiprocessing.cpu_count())
 			num_parallel_calls=4)
 		self.dataset = dataset
-		self.data_size = len(os.listdir(self.data_dir))
+		self.data_size = len(data_list)
 		return self.dataset
 
 	def input_parser(self, case):
@@ -646,8 +647,6 @@ class RandomCrop2D(object):
 		size_old = images[0].GetSize()
 		size_new = self.output_size
 
-		contain_label = False
-
 		for channel in range(len(images)):
 			roiFilter = sitk.RegionOfInterestImageFilter()
 			roiFilter.SetSize([size_new[0],size_new[1]])
@@ -690,8 +689,6 @@ class RandomCrop3D(object):
 		size_old = images[0].GetSize()
 		size_new = self.output_size
 
-		contain_label = False
-
 		for channel in range(len(images)):
 			roiFilter = sitk.RegionOfInterestImageFilter()
 			roiFilter.SetSize([size_new[0],size_new[1],size_new[2]])
@@ -712,6 +709,7 @@ class RandomCrop3D(object):
 				start_k = np.random.randint(0, size_old[2]-size_new[2])
 
 			roiFilter.SetIndex([start_i,start_j,start_k])
+
 			images[channel] = roiFilter.Execute(images[channel])
 
 		return {'images': images}
