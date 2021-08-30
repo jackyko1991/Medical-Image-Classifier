@@ -13,6 +13,7 @@ from tqdm import tqdm
 import pandas as pd
 from utils.report import report
 import SimpleITK as sitk
+np.set_printoptions(precision=4,suppress=True)
 
 def dice_loss(y_true, y_pred, epsilon=1e-7,reduce_axis=-1, loss_type="sorensen"):
 	numerator = 2 * tf.reduce_sum(y_true * y_pred, axis=reduce_axis)
@@ -104,6 +105,7 @@ class MedicalImageClassifier(object):
 		self.decay_factor = self.config['TrainingSetting']['Optimizer']['Decay']['Factor']
 		self.decay_step = self.config['TrainingSetting']['Optimizer']['Decay']['Step']
 		self.loss_fn = self.config['TrainingSetting']['LossFunction']['Name']
+		self.classificatin_type = self.config['TrainingSetting']['LossFunction']['Multiclass/Multilabel']
 
 		self.model_path = self.config['PredictionSetting']['ModelPath']
 		self.checkpoint_path = self.config['PredictionSetting']['CheckPointPath']
@@ -172,6 +174,7 @@ class MedicalImageClassifier(object):
 		if self.image_log:
 			if len(self.patch_shape)==2:
 				for input_channel in range(self.input_channel_num):
+					
 					image_log = tf.cast(self.input_placeholder[:,:,:,input_channel:input_channel+1], dtype=tf.uint8)
 					tf.summary.image(self.image_filenames[input_channel],image_log, max_outputs=self.batch_size)
 			else:
@@ -261,13 +264,11 @@ class MedicalImageClassifier(object):
 			else:
 				self.network = networks.Vgg3D(
 					num_classes=self.output_channel_num,
-					# num_channels=64,
-					num_channels=32,
+					num_channels=64,
 					is_training=True,
 					activation_fn="relu",
 					dropout=self.dropout_placeholder,
-					# module_config=[2,2,3,3,3],
-					module_config=[2,3,3],
+					module_config=[2,2,3,3,3],
 					batch_norm_momentum=0.99,
 					fc_channels=[4096,4096])
 		elif self.network_name == "ResNet":
@@ -290,7 +291,7 @@ class MedicalImageClassifier(object):
 					dropout=self.dropout_placeholder,
 					init_conv_shape=5,
 					init_pool=True,
-					module_config=[2,2,2])
+					module_config=[2])
 		else:
 			sys.exit('Invalid Network')
 
@@ -303,16 +304,35 @@ class MedicalImageClassifier(object):
 			#self.logits_additional_features_op = tf.layers.dense(inputs=dense1,units=self.num_classes, activation=None)
 			self.logits_op = tf.layers.dense(inputs=dense1,units=self.num_classes, activation=None)
 
-		self.sigmoid_op = tf.sigmoid(self.logits_op)
-		self.result_op = tf.cast(tf.math.round(self.sigmoid_op),dtype=tf.uint8)
+		if self.classificatin_type == "Multilabel":
+			self.prob_op = tf.sigmoid(self.logits_op)
+			self.result_op = tf.cast(tf.math.round(self.prob_op),dtype=tf.uint8)
+			if self.loss_fn == "xent":
+				self.sigmoid_xent = tf.nn.sigmoid_cross_entropy_with_logits(logits=self.logits_op,labels=self.output_placeholder)
+				self.loss_op = tf.reduce_mean(self.sigmoid_xent,0)
+			elif self.loss_fn == "sorensen":
+				self.loss_op = dice_loss(y_true=self.output_placeholder,y_pred=self.prob_op)
+			elif self.loss_fn == "jaccard":
+				self.loss_op = dice_loss(y_true=self.output_placeholder,y_pred=self.prob_op,loss_type="jaccard")
+		elif self.classificatin_type == "Multiclass":
+			self.prob_op = tf.nn.softmax(self.logits_op)
+			self.result_op = tf.cast(tf.one_hot(tf.argmax(self.prob_op,1),self.output_channel_num),dtype=tf.uint8)
+			if self.loss_fn == "xent":
+				self.softmax_xent = tf.nn.softmax_cross_entropy_with_logits(logits=self.logits_op,labels=self.output_placeholder)
+				self.loss_op = tf.reduce_mean(self.softmax_xent,0)
+			elif self.loss_fn == "sorensen":
+				self.loss_op = dice_loss(y_true=self.output_placeholder,y_pred=self.prob_op)
+			elif self.loss_fn == "jaccard":
+				self.loss_op = dice_loss(y_true=self.output_placeholder,y_pred=self.prob_op,loss_type="jaccard")
+		else:
+			exit("Classification type can only be \"Multiclass\" or \"Multilabel\", training abort")
 
-		if self.loss_fn == "xent":
-			self.sigmoid_xent = tf.nn.sigmoid_cross_entropy_with_logits(logits=self.logits_op,labels=self.output_placeholder)
-			self.loss_op = tf.reduce_mean(self.sigmoid_xent,0)
-		elif self.loss_fn == "sorensen":
-			self.loss_op = dice_loss(y_true=self.output_placeholder,y_pred=self.sigmoid_op)
-		elif self.loss_fn == "jaccard":
-			self.loss_op = dice_loss(y_true=self.output_placeholder,y_pred=self.sigmoid_op,loss_type="jaccard")
+		# print("loss_op: ",self.loss_op.get_shape())
+		# print("softmax_op: ", self.softmax_xent.get_shape())
+		# print("logits: ",self.logits_op.get_shape())
+		# print("outputplaceholder: ",self.output_placeholder.get_shape())
+		# print("result: ",self.result_op.get_shape())
+		# exit()
 
 		self.avg_loss_op = tf.reduce_mean(self.loss_op)
 		# self.avg_loss_op = tf.reduce_prod(self.loss_op)*(10**(len(self.class_names)-1))
@@ -352,7 +372,7 @@ class MedicalImageClassifier(object):
 
 			accuracy = class_acc_op
 
-			class_auc, class_auc_op = tf.metrics.auc(labels=self.output_placeholder[:,i], predictions=self.sigmoid_op[:,i])
+			class_auc, class_auc_op = tf.metrics.auc(labels=self.output_placeholder[:,i], predictions=self.prob_op[:,i])
 
 			self.class_tp.append(class_tp_op)
 			self.class_tn.append(class_tn_op)
@@ -364,7 +384,8 @@ class MedicalImageClassifier(object):
 			class_sensitivity.append(sensitivity)
 			class_specificity.append(specificity)
 
-			tf.summary.scalar('loss/' + self.class_names[i], self.loss_op[i])
+			if self.classificatin_type == "Multilabel":
+				tf.summary.scalar('loss/' + self.class_names[i], self.loss_op[i])
 			tf.summary.scalar('accuracy/' + self.class_names[i], accuracy)
 			tf.summary.scalar('precision/' + self.class_names[i],precision)
 			tf.summary.scalar('sensitivity/' + self.class_names[i],sensitivity)
@@ -383,6 +404,10 @@ class MedicalImageClassifier(object):
 		tf.summary.scalar('auc/average', avg_auc)
 
 		self.acc_op = avg_accuracy
+		self.precision_op = avg_precision
+		self.sensitivity_op = avg_sensitivity
+		self.specificity_op = avg_specificity
+		self.auc_op = avg_auc
 
 	def train(self):
 		# read config to class variables
@@ -497,8 +522,8 @@ class MedicalImageClassifier(object):
 						images = images[:self.batch_size,]
 						label = label[:self.batch_size,]
 
-					sigmoid, loss, result, accuracy, train = self.sess.run(
-						[self.sigmoid_op,self.avg_loss_op, self.result_op, self.acc_op, train_op], 
+					prob, loss, result, accuracy, precision, sensitivity, specificity, auc, train = self.sess.run(
+						[self.prob_op,self.avg_loss_op, self.result_op, self.acc_op, self.precision_op, self.sensitivity_op, self.specificity_op, self.auc_op, train_op], 
 						feed_dict={
 							self.input_placeholder: images, 
 							self.output_placeholder: label,
@@ -506,10 +531,13 @@ class MedicalImageClassifier(object):
 							self.network.is_training: True})
 					print("{}: Training loss: {:.4f}".format(datetime.datetime.now(),loss))
 					print("{}: accuracy: {:.4f}".format(datetime.datetime.now(),accuracy))
-					print("{}: ground truth: \n{}".format(datetime.datetime.now(),label[:5]))
-					print("{}: result: \n{}".format(datetime.datetime.now(),result[:5]))
-					#print("{}: sigmoid xent: {}".format(datetime.datetime.now(),sigmoid_xent[:10]))
-					print("{}: sigmoid: \n{}".format(datetime.datetime.now(),sigmoid[:5]))
+					print("{}: precision: {:.4f}".format(datetime.datetime.now(),precision))
+					print("{}: sensitivity: {:.4f}".format(datetime.datetime.now(),sensitivity))
+					print("{}: specificity: {:.4f}".format(datetime.datetime.now(),specificity))
+					print("{}: auc: {:.4f}".format(datetime.datetime.now(),auc))
+					print("{}: ground truth: \n{}".format(datetime.datetime.now(),label[:]))
+					print("{}: result: \n{}".format(datetime.datetime.now(),result[:]))
+					print("{}: probability: \n{}".format(datetime.datetime.now(),prob[:]))
 
 					# perform summary log after training op
 					summary = self.sess.run(summary_op,feed_dict={
@@ -561,8 +589,8 @@ class MedicalImageClassifier(object):
 							images = images[:self.batch_size,]
 							label = label[:self.batch_size,]
 
-						sigmoid, loss, result, accuracy, summary = self.sess.run(
-							[self.sigmoid_op,self.avg_loss_op, self.result_op, self.acc_op, summary_op], 
+						prob, loss, result, accuracy, precision, sensitivity, specificity, auc, summary = self.sess.run(
+							[self.prob_op,self.avg_loss_op, self.result_op, self.acc_op, self.precision_op, self.sensitivity_op, self.specificity_op, self.auc_op, summary_op], 
 							feed_dict={
 								self.input_placeholder: images, 
 								self.output_placeholder: label,
@@ -570,9 +598,13 @@ class MedicalImageClassifier(object):
 								self.network.is_training: False})
 						print("{}: Testing loss: {:.4f}".format(datetime.datetime.now(),loss))
 						print("{}: accuracy: {:.4f}".format(datetime.datetime.now(),accuracy))
+						print("{}: precision: {:.4f}".format(datetime.datetime.now(),precision))
+						print("{}: sensitivity: {:.4f}".format(datetime.datetime.now(),sensitivity))
+						print("{}: specificity: {:.4f}".format(datetime.datetime.now(),specificity))
+						print("{}: auc: {:.4f}".format(datetime.datetime.now(),auc))
 						print("{}: ground truth: \n{}".format(datetime.datetime.now(),label[:5]))
 						print("{}: result: \n{}".format(datetime.datetime.now(),result[:5]))
-						print("{}: sigmoid: \n{}".format(datetime.datetime.now(),sigmoid[:5]))
+						print("{}: prob: \n{}".format(datetime.datetime.now(),prob[:5]))
 
 						test_summary_writer.add_summary(summary, global_step=tf.train.global_step(self.sess, self.global_step))
 						test_summary_writer.flush()
@@ -682,23 +714,23 @@ class MedicalImageClassifier(object):
 
 			images_np = images_np[np.newaxis,]
 
-			sigmoid = self.sess.run(['Sigmoid:0'], feed_dict={
+			prob = self.sess.run(['Sigmoid:0'], feed_dict={
 						'Placeholder:0': images_np,
 						'dropout:0':0.0,
 						'train_phase_placeholder:0':False})
 
 			output = {'case': case}
 			for channel in range(self.output_channel_num):
-				output[self.class_names[channel]] = sigmoid[channel]
+				output[self.class_names[channel]] = prob[channel]
 			output_df = output_df.append(output, ignore_index=True)
 
 			if self.report_output:
-				doc = report.Report(images=images,result=sigmoid[0],class_names=self.class_names)
+				doc = report.Report(images=images,result=prob[0],class_names=self.class_names)
 				doc.WritePdf(os.path.join(self.evaluation_data_dir,case,"report"))
 
 			tqdm.write("{}: Evaluation of {} complete:".format(datetime.datetime.now(), case))
 			for i in range(self.output_channel_num):
-				tqdm.write("{}: {}%".format(self.class_names[i],sigmoid[0][i]*100))
+				tqdm.write("{}: {}%".format(self.class_names[i],prob[0][i]*100))
 
 		# write csv
 		output_df.to_csv(self.evaluation_output_filename,index=False)
