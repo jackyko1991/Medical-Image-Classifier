@@ -1,0 +1,66 @@
+- model: Medical Image Classifier
+  description: CNN Classifier using Tensorflow for medical images with NIFTI input
+  operations:
+    prepare-config:
+      description: Prepare the configuration files for training and validation
+      main: configs.prepare_config
+      requires:
+        - file: configs/config_carotid_resnet_mixed_mag.json
+          name: config_template
+      flags-dest: args
+      flags-import:
+        - tmp_json
+        - data_dir
+        - fold
+        - log_dir
+        - ckpt_dir
+        - epoches
+
+    train:
+      description: Train the medical image classifier
+      main: main --phase TRAIN
+      flags-dest: args
+      flags-import:
+        - config_json
+      flags:
+        config_json: config_out.json
+      requires:
+        - operation: prepare-config
+        - file: /mnt/DIIR-JK-NAS/data/carotid/data_kfold/
+      output-scalars:
+        - '(\value): step (?P<step>\step): get next element ok'
+        - '(\value): Training loss: (?P<train_loss>\value)'
+        - '(\value): Training accuracy: (?P<train_accuracy>\value)'
+        - '(\value): Training precision: (?P<train_precision>\value)'
+        - '(\value): Training sensitivity  (?P<train_sensitivity>\value)'
+        - '(\value): Training specificity: (?P<train_specificity>\value)'
+        - '(\value): Training auc: (?P<train_auc>\value)'
+        - '(\value): Testing loss: (?P<test_loss>\value)'
+        - '(\value): Testing accuracy: (?P<test_accuracy>\value)'
+        - '(\value): Testing precision: (?P<test_precision>\value)'
+        - '(\value): Testing sensitivity  (?P<test_sensitivity>\value)'
+        - '(\value): Testing specificity: (?P<test_specificity>\value)'
+        - '(\value): Testing auc: (?P<test_auc>\value)'
+        
+    # predict:
+    #   description: Validate the classifier performance
+
+    pipeline:
+      description: Machine learning pipeline for medical image classification
+      flags: 
+        fold: [2,3,4]
+        epoches: 80
+      steps:
+        - run: prepare-config
+          flags:
+            tmp_json: config_carotid_resnet_mixed_mag.json
+            data_dir: "/mnt/DIIR-JK-NAS/data/carotid/data_kfold"
+            fold: ${fold}
+            epoches: ${epoches}
+            # output to system directory
+            log_dir: "/mnt/DIIR-JK-NAS/projects/Medical-Image-Classifier/tmp_carotid"
+            ckpt_dir: "/mnt/DIIR-JK-NAS/projects/Medical-Image-Classifier/tmp_carotid"
+            # # output to guild run directory
+            # log_dir: "./tmp_carotid"
+            # ckpt_dir: "./tmp_carotid"
+        - run: train

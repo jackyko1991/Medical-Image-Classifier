@@ -327,17 +327,7 @@ class MedicalImageClassifier(object):
 		else:
 			exit("Classification type can only be \"Multiclass\" or \"Multilabel\", training abort")
 
-		# print("loss_op: ",self.loss_op.get_shape())
-		# print("softmax_op: ", self.softmax_xent.get_shape())
-		# print("logits: ",self.logits_op.get_shape())
-		# print("outputplaceholder: ",self.output_placeholder.get_shape())
-		# print("result: ",self.result_op.get_shape())
-		# exit()
-
 		self.avg_loss_op = tf.reduce_mean(self.loss_op)
-		# self.avg_loss_op = tf.reduce_prod(self.loss_op)*(10**(len(self.class_names)-1))
-		# self.avg_loss_op = tf.reduce_prod(self.loss_op)
-		# acc, self.acc_op = tf.metrics.accuracy(labels=self.output_placeholder, predictions=self.result_op)
 
 		tf.summary.scalar('loss/average', self.avg_loss_op)
 		# tf.summary.scalar('accuracy/overall',self.acc_op)
@@ -502,7 +492,8 @@ class MedicalImageClassifier(object):
 				try:
 					self.sess.run(tf.initializers.local_variables())
 					images, label = self.sess.run(self.next_element_train)
-					print("{}: step: {} get next element ok".format(datetime.datetime.now(), self.global_step.eval()))
+					# print("{}: step {}: get next element ok".format(datetime.datetime.now(), self.global_step.eval()))
+					print("step {}: get next element ok".format(self.global_step.eval()))
 					if images.shape[0] < self.batch_size:
 						# if self.dimension == 2:
 						# 	images_zero_pads = np.zeros((self.batch_size-images.shape[0],images.shape[1],images.shape[2],images.shape[3]))
@@ -530,14 +521,14 @@ class MedicalImageClassifier(object):
 							self.dropout_placeholder: self.network_dropout_rate,
 							self.network.is_training: True})
 					print("{}: Training loss: {:.4f}".format(datetime.datetime.now(),loss))
-					print("{}: accuracy: {:.4f}".format(datetime.datetime.now(),accuracy))
-					print("{}: precision: {:.4f}".format(datetime.datetime.now(),precision))
-					print("{}: sensitivity: {:.4f}".format(datetime.datetime.now(),sensitivity))
-					print("{}: specificity: {:.4f}".format(datetime.datetime.now(),specificity))
-					print("{}: auc: {:.4f}".format(datetime.datetime.now(),auc))
-					print("{}: ground truth: \n{}".format(datetime.datetime.now(),label[:]))
-					print("{}: result: \n{}".format(datetime.datetime.now(),result[:]))
-					print("{}: probability: \n{}".format(datetime.datetime.now(),prob[:]))
+					print("{}: Training accuracy: {:.4f}".format(datetime.datetime.now(),accuracy))
+					print("{}: Training precision: {:.4f}".format(datetime.datetime.now(),precision))
+					print("{}: Training sensitivity: {:.4f}".format(datetime.datetime.now(),sensitivity))
+					print("{}: Training specificity: {:.4f}".format(datetime.datetime.now(),specificity))
+					print("{}: Training auc: {:.4f}".format(datetime.datetime.now(),auc))
+					print("{}: Training ground truth: \n{}".format(datetime.datetime.now(),label[:]))
+					print("{}: Training result: \n{}".format(datetime.datetime.now(),result[:]))
+					print("{}: Training probability: \n{}".format(datetime.datetime.now(),prob[:]))
 
 					# perform summary log after training op
 					summary = self.sess.run(summary_op,feed_dict={
@@ -597,14 +588,14 @@ class MedicalImageClassifier(object):
 								self.dropout_placeholder: 0.0,
 								self.network.is_training: False})
 						print("{}: Testing loss: {:.4f}".format(datetime.datetime.now(),loss))
-						print("{}: accuracy: {:.4f}".format(datetime.datetime.now(),accuracy))
-						print("{}: precision: {:.4f}".format(datetime.datetime.now(),precision))
-						print("{}: sensitivity: {:.4f}".format(datetime.datetime.now(),sensitivity))
-						print("{}: specificity: {:.4f}".format(datetime.datetime.now(),specificity))
-						print("{}: auc: {:.4f}".format(datetime.datetime.now(),auc))
-						print("{}: ground truth: \n{}".format(datetime.datetime.now(),label[:5]))
-						print("{}: result: \n{}".format(datetime.datetime.now(),result[:5]))
-						print("{}: prob: \n{}".format(datetime.datetime.now(),prob[:5]))
+						print("{}: Testing accuracy: {:.4f}".format(datetime.datetime.now(),accuracy))
+						print("{}: Testing precision: {:.4f}".format(datetime.datetime.now(),precision))
+						print("{}: Testing sensitivity: {:.4f}".format(datetime.datetime.now(),sensitivity))
+						print("{}: Testing specificity: {:.4f}".format(datetime.datetime.now(),specificity))
+						print("{}: Testing auc: {:.4f}".format(datetime.datetime.now(),auc))
+						print("{}: Testing ground truth: \n{}".format(datetime.datetime.now(),label[:5]))
+						print("{}: Testing result: \n{}".format(datetime.datetime.now(),result[:5]))
+						print("{}: Testing prob: \n{}".format(datetime.datetime.now(),prob[:5]))
 
 						test_summary_writer.add_summary(summary, global_step=tf.train.global_step(self.sess, self.global_step))
 						test_summary_writer.flush()
@@ -714,10 +705,16 @@ class MedicalImageClassifier(object):
 
 			images_np = images_np[np.newaxis,]
 
-			prob = self.sess.run(['Sigmoid:0'], feed_dict={
-						'Placeholder:0': images_np,
-						'dropout:0':0.0,
-						'train_phase_placeholder:0':False})
+			if self.classificatin_type == "Multilabel":
+				prob = self.sess.run(['Sigmoid:0'], feed_dict={
+							'Placeholder:0': images_np,
+							'dropout:0':0.0,
+							'train_phase_placeholder:0':False})
+			elif self.classificatin_type == "Multiclass":
+				prob = self.sess.run(['Softmax:0'], feed_dict={
+							'Placeholder:0': images_np,
+							'dropout:0':0.0,
+							'train_phase_placeholder:0':False})
 
 			output = {'case': case}
 			for channel in range(self.output_channel_num):

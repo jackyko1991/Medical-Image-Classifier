@@ -1211,11 +1211,11 @@ class Resnet2D(object):
 		conv1 = tf.pad(conv1, paddings, "CONSTANT")
 		conv2Filter_shape = [3,3,channels,channels]
 		conv2 = self.Conv2d_block(conv1, conv2Filter_shape, is_training = self.is_training)
-		input_tensor_norm = tf.layers.batch_normalization(input_tensor, momentum=0.99, epsilon=0.001,center=True, scale=True,training=is_training)
-		output = tf.add(conv2, input_tensor_norm)
-		output = tf.layers.batch_normalization(output, momentum=0.99, epsilon=0.001,center=True, scale=True,training=is_training)
-		output = self.activation_fn(output)
-		output = tf.nn.dropout(output, rate=self.dropout)
+		#input_tensor_norm = tf.layers.batch_normalization(input_tensor, momentum=0.99, epsilon=0.001,center=True, scale=True,training=is_training)
+		output = tf.add(conv2, input_tensor)
+		# output = tf.layers.batch_normalization(output, momentum=0.99, epsilon=0.001,center=True, scale=True,training=is_training)
+		# output = self.activation_fn(output)
+		# output = tf.nn.dropout(output, rate=self.dropout)
 		return output
 
 	def residual_shortcut_block(self, input_tensor, channels, is_training=True):
@@ -1233,13 +1233,13 @@ class Resnet2D(object):
 		shortcut_conv_B = init_bias(shortcut_filterShape[3])
 		shortcut = tf.nn.conv2d(input_tensor, shortcut_conv_W, strides = [1,2,2,1], padding ='VALID') + shortcut_conv_B
 		shortcut_norm = tf.layers.batch_normalization(shortcut, momentum=0.99, epsilon=0.001,center=True, scale=True,training=is_training)
-		shortcut_norm = self.activation_fn(output)
+		shortcut_norm = self.activation_fn(shortcut_norm)
 		shortcut_norm = tf.nn.dropout(shortcut_norm, rate=self.dropout)
 
 		output = tf.add(conv2, shortcut_norm)
-		output = tf.layers.batch_normalization(output, momentum=0.99, epsilon=0.001,center=True, scale=True,training=is_training)
-		output = self.activation_fn(output)
-		output = tf.nn.dropout(output, rate=self.dropout)
+		# output = tf.layers.batch_normalization(output, momentum=0.99, epsilon=0.001,center=True, scale=True,training=is_training)
+		# output = self.activation_fn(output)
+		# output = tf.nn.dropout(output, rate=self.dropout)
 
 		return output
 
@@ -1263,8 +1263,8 @@ class Resnet2D(object):
 		avgPool = tf.layers.average_pooling2d(x, pool_size=[2,2], strides=[2,2], padding = 'valid')
 
 		flatten = tf.reshape(avgPool, [-1, avgPool.get_shape()[1]*avgPool.get_shape()[2]*avgPool.get_shape()[3]])
-		dense = tf.layers.dense(inputs=flatten,units=1000, activation=self.activation_fn)
-		logits = tf.layers.dense(inputs=dense,units=self.num_classes, activation=None)
+		#dense = tf.layers.dense(inputs=flatten,units=1000, activation=self.activation_fn)
+		logits = tf.layers.dense(inputs=flatten,units=self.num_classes, activation=None)
 
 		return logits
 
@@ -1346,11 +1346,12 @@ class Resnet3D(object):
 		conv1 = tf.pad(conv1, paddings, "CONSTANT")
 		conv2Filter_shape = [3,3,3,channels,channels]
 		conv2 = self.Conv3d_block(conv1, conv2Filter_shape, is_training = self.is_training)
-		input_tensor_norm = tf.layers.batch_normalization(input_tensor, momentum=0.99, epsilon=0.001,center=True, scale=True,training=is_training)
+		#input_tensor_norm = tf.layers.batch_normalization(input_tensor, momentum=0.99, epsilon=0.001,center=True, scale=True,training=is_training)
+		input_tensor_norm = input_tensor
 		output = tf.add(conv2, input_tensor_norm)
-		output = tf.layers.batch_normalization(output, momentum=0.99, epsilon=0.001,center=True, scale=True,training=is_training)
-		output = self.activation_fn(output)
-		output = tf.nn.dropout(output, self.dropout)
+		# output = tf.layers.batch_normalization(output, momentum=0.99, epsilon=0.001,center=True, scale=True,training=is_training)
+		# output = self.activation_fn(output)
+		# output = tf.nn.dropout(output, self.dropout)
 		return output
 
 	def residual_shortcut_block(self, input_tensor, channels, is_training=True):
@@ -1372,9 +1373,9 @@ class Resnet3D(object):
 		shortcut_norm = tf.nn.dropout(shortcut_norm, rate=self.dropout)
 
 		output = tf.add(conv2, shortcut_norm)
-		output = tf.layers.batch_normalization(output, momentum=0.99, epsilon=0.001,center=True, scale=True,training=is_training)
-		output = self.activation_fn(output)
-		output = tf.nn.dropout(output, rate=self.dropout)
+		# output = tf.layers.batch_normalization(output, momentum=0.99, epsilon=0.001,center=True, scale=True,training=is_training)
+		# output = self.activation_fn(output)
+		# output = tf.nn.dropout(output, rate=self.dropout)
 
 		return output
 
@@ -1398,7 +1399,7 @@ class Resnet3D(object):
 		avgPool = tf.layers.average_pooling3d(x, pool_size=[2,2,2], strides=[2,2,2], padding = 'valid')
 
 		flatten = tf.reshape(avgPool, [-1, avgPool.get_shape()[1]*avgPool.get_shape()[2]*avgPool.get_shape()[3]*avgPool.get_shape()[4]])
-		dense = tf.layers.dense(inputs=flatten,units=1000, activation=self.activation_fn)
-		logits = tf.layers.dense(inputs=dense,units=self.num_classes, activation=None)
+		#dense = tf.layers.dense(inputs=flatten,units=1000, activation=self.activation_fn)
+		logits = tf.layers.dense(inputs=flatten,units=self.num_classes, activation=None)
 
 		return logits

@@ -112,6 +112,15 @@ Note:
 
 #### Evaluate
 
+Edit `PredictionSetting` in `./configs/config.json`, then run with following command:
+
+```bash
+$ python main.py --phase PREDICT --config_json ./configs/config.json
+```
+
+## Grid Search Optimal Hyperparameters
+It is advisible to use [Guild AI](https://guild.ai/) for machine learning model tracking. For detail check [this](./GUILD_AI.md) file for further information.
+
 ## References
 - [About the MNI space(s)](https://www.lead-dbs.org/about-the-mni-spaces/)
 - [FMRIB Software Library v6.0](https://fsl.fmrib.ox.ac.uk/fsl/fslwiki)
