@@ -717,8 +717,12 @@ class MedicalImageClassifier(object):
 							'train_phase_placeholder:0':False})
 
 			output = {'case': case}
+
 			for channel in range(self.output_channel_num):
-				output[self.class_names[channel]] = prob[channel]
+				if self.input_channel_num == 1:
+					output[self.class_names[channel]] = prob[channel]
+				else:
+					output[self.class_names[channel]] = prob[0][0,channel]
 			output_df = output_df.append(output, ignore_index=True)
 
 			if self.report_output:
@@ -727,7 +731,10 @@ class MedicalImageClassifier(object):
 
 			tqdm.write("{}: Evaluation of {} complete:".format(datetime.datetime.now(), case))
 			for i in range(self.output_channel_num):
-				tqdm.write("{}: {}%".format(self.class_names[i],prob[0][i]*100))
+				if self.input_channel_num == 1:
+					tqdm.write("{}: {}%".format(self.class_names[i],prob[0][i]*100))
+				else:
+					tqdm.write("{}: {}%".format(self.class_names[i],prob[0][0,i]*100))
 
 		# write csv
 		output_df.to_csv(self.evaluation_output_filename,index=False)

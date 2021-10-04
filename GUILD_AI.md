@@ -29,7 +29,7 @@ pipeline:
 The `prepare-config` step will use helper file [./config/prepare_config.py](./config/prepare_config.py) to generate the necessary configuraiton json. Currently the helper file is limited to common hyperparameter tuning and you may need to edit to fit your application. To specify the training step to use the generated configuration file, use the command:
 
 ```bash
-$ guild run pipeline
+$ guild run -b pipeline 
 ```
 
 When training is complete use following command to read the output. Since we use Tensorflow to log performance, Guild AI will read all scalars from the `.event` file and creating redundant outputs. 

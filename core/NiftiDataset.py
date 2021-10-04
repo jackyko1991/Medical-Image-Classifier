@@ -348,9 +348,7 @@ class RandomRotate2D(object):
 		transform = sitk.Euler2DTransform()
 		transform.SetMatrix(images[0].GetDirection())
 
-		center = [0,0]
-		center[0] = images[0].GetOrigin()[0] + images[0].GetSpacing()[0]*images[0].GetSize()[0]/2
-		center[1] = images[0].GetOrigin()[1] + images[0].GetSpacing()[1]*images[0].GetSize()[1]/2
+		center = [images[0].GetOrigin()[i] + images[0].GetSpacing()[i]*images[0].GetSize()[i]/2 for i in range(2)] 
 
 		transform.SetCenter(tuple(center))
 		ang_degree = random.randint(0,180)*1.0
@@ -372,8 +370,11 @@ class RandomRotate3D(object):
 	Randomly rotate the input image in 3D
 	"""
 
-	def __init__(self):
+	def __init__(self,max_angle_X=180, max_angle_Y=180,max_angle_Z=180):
 		self.name = "Random Rotate 3D"
+		self.max_angle_X = max_angle_X
+		self.max_angle_Y = max_angle_Y
+		self.max_angle_Z = max_angle_Z
 
 	def __call__(self,sample):
 		images = sample['images']
@@ -381,15 +382,12 @@ class RandomRotate3D(object):
 		transform = sitk.Euler3DTransform()
 		transform.SetMatrix(images[0].GetDirection())
 
-		center = [0,0,0]
-		center[0] = images[0].GetOrigin()[0] + images[0].GetSpacing()[0]*images[0].GetSize()[0]/2
-		center[1] = images[0].GetOrigin()[1] + images[0].GetSpacing()[1]*images[0].GetSize()[1]/2
-		center[2] = images[0].GetOrigin()[2] + images[0].GetSpacing()[2]*images[0].GetSize()[2]/2
+		center = [images[0].GetOrigin()[i] + images[0].GetSpacing()[i]*images[0].GetSize()[i]/2 for i in range(3)] 
 
 		transform.SetCenter(tuple(center))
-		angX_degree = random.randint(0,180)*1.0
-		angY_degree = random.randint(0,180)*1.0
-		angZ_degree = random.randint(0,180)*1.0
+		angX_degree = random.randint(0,self.max_angle_X)*1.0
+		angY_degree = random.randint(0,self.max_angle_Y)*1.0
+		angZ_degree = random.randint(0,self.max_angle_Z)*1.0
 
 		transform.SetRotation(angX_degree/180.0*math.pi,angY_degree/180.0*math.pi,angZ_degree/180.0*math.pi)
 
@@ -763,7 +761,7 @@ class CropCenter2D(object):
 	"""
 
 	def __init__(self, output_size):
-		self.name = 'Crop Center'
+		self.name = 'Crop Center 2D'
 
 		assert isinstance(output_size, (int, tuple, list))
 		if isinstance(output_size, int):
@@ -782,6 +780,52 @@ class CropCenter2D(object):
 			new_origin = [0,0]
 			new_origin[0] = image_center[0]-output_size[0]/2*images[0].GetSpacing()[0]
 			new_origin[1] = image_center[1]-output_size[1]/2*images[0].GetSpacing()[1]
+
+			resampler = sitk.ResampleImageFilter()
+			resampler.SetOutputSpacing(images[0].GetSpacing())
+			resampler.SetSize(output_size)
+
+			# resample on image
+			resampler.SetInterpolator(2)
+			resampler.SetOutputOrigin(new_origin)
+			resampler.SetOutputDirection(images[0].GetDirection())
+			images[image_channel] = resampler.Execute(images[image_channel])
+
+		return {'images': images}
+
+class CropCenter3D(object):
+	"""
+	Crop the 3D image to center in a sample. This is usually used for model prediction.
+
+	Args:
+	output_size (tuple or int): Desired output size. If int, cubic crop is made.
+	"""
+
+	def __init__(self, output_size):
+		self.name = 'Crop Center 3D'
+
+		assert isinstance(output_size, (int, tuple, list))
+		if isinstance(output_size, int):
+			self.output_size = (output_size, output_size)
+		else:
+			assert len(output_size) == 3
+			self.output_size = output_size
+
+	def __call__(self,sample):
+		images = sample['images']
+
+		for image_channel in range(len(images)):
+			output_size = tuple(self.output_size)
+
+			image_center = images[0].TransformIndexToPhysicalPoint([
+				round(images[0].GetSize()[0]/2),
+				round(images[0].GetSize()[1]/2),
+				round(images[0].GetSize()[2]/2),
+				])
+			new_origin = [0,0,0]
+			new_origin[0] = image_center[0]-output_size[0]/2*images[0].GetSpacing()[0]
+			new_origin[1] = image_center[1]-output_size[1]/2*images[0].GetSpacing()[1]
+			new_origin[2] = image_center[2]-output_size[2]/2*images[0].GetSpacing()[2]
 
 			resampler = sitk.ResampleImageFilter()
 			resampler.SetOutputSpacing(images[0].GetSpacing())
