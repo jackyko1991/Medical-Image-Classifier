@@ -167,7 +167,7 @@ class StatisticalNormalization(object):
 	"""
 
 	def __init__(self, sigma, pre_norm=False):
-		self.name = 'StatisticalNormalization'
+		self.name = 'Statistical Normalization'
 		assert isinstance(sigma, float)
 		self.sigma = sigma
 		self.pre_norm=pre_norm
@@ -221,7 +221,7 @@ class StatisticalNormalization(object):
 	"""
 
 	def __init__(self, sigma, pre_norm=False):
-		self.name = 'StatisticalNormalization'
+		self.name = 'Statistical Normalization'
 		assert isinstance(sigma, float)
 		self.sigma = sigma
 		self.pre_norm=pre_norm
@@ -282,7 +282,7 @@ class ManualNormalization(object):
 	"""
 
 	def __init__(self,windowMinMaxList):
-		self.name = 'ManualNormalization'
+		self.name = 'Manual Normalization'
 		assert isinstance(windowMinMaxList, list)
 		self.windowMinMaxList = windowMinMaxList
 
@@ -837,6 +837,34 @@ class CropCenter3D(object):
 			resampler.SetOutputDirection(images[0].GetDirection())
 			images[image_channel] = resampler.Execute(images[image_channel])
 
+		return {'images': images}
+
+class CompositeTransform(object):
+	"""
+	Apply user defined transformation on specific data channel. The transformation method is applied sequentially by the given list.
+
+	e.g.
+	CompositeTransform([
+		(RandomNoise(0.05),[0,1]), 
+		(ManualNormalization([[0,128],[0,100]]),[1,2])
+		])
+
+	Will first apply RandomNoise on channel 0 and 1, followed by ManualNormalization on channel 1 and 2 with range [0,128] and [0,1000]. 
+	Other channels will passthrough and remain unchange
+
+	Args:
+	method_channel_list (list): List of methods applied to speciifc channel
+	"""
+
+	def __init__(self, method_channel_list):
+		self.name = "Composite Transform"
+
+		self.method_channel_list = method_channel_list
+
+	def __call__(self,sample):
+		images = sample['images']
+
+		
 		return {'images': images}
 
 # class ConfidenceCrop(object):

@@ -1,7 +1,7 @@
 import tensorflow as tf
-from core import NiftiDataset
+from pipeline import NiftiDataset
 from core import networks
-from core import transforms
+from pipeline import transforms
 import numpy as np
 import datetime
 import sys
@@ -106,12 +106,14 @@ class MedicalImageClassifier(object):
 		self.decay_step = self.config['TrainingSetting']['Optimizer']['Decay']['Step']
 		self.loss_fn = self.config['TrainingSetting']['LossFunction']['Name']
 		self.classificatin_type = self.config['TrainingSetting']['LossFunction']['Multiclass/Multilabel']
+		self.training_pipeline = self.config['TrainingSetting']["Pipeline"]
 
 		self.model_path = self.config['PredictionSetting']['ModelPath']
 		self.checkpoint_path = self.config['PredictionSetting']['CheckPointPath']
 		self.evaluation_data_dir = self.config['PredictionSetting']['Data']['EvaluationDataDirectory']
 		self.report_output = self.config['PredictionSetting']['ReportOutput']
 		self.evaluation_output_filename = self.config['PredictionSetting']['Data']['OutputFilename']
+		self.evaluation_pipeline = self.config['PredictionSetting']['Pipeline']
 
 	def dataset_iterator(self,data_dir,transforms,train=True):
 		# Force input pipepline to CPU:0 to avoid operations sometimes ended up at GPU and resulting a slow down
@@ -183,9 +185,9 @@ class MedicalImageClassifier(object):
 						image_log = tf.cast(self.input_placeholder[batch:batch+1,:,:,:,input_channel], dtype=tf.uint8)
 						tf.summary.image(self.image_filenames[input_channel],tf.transpose(image_log,[3,1,2,0]), max_outputs=self.patch_shape[-1])
 
-		# training and testing augmentation pipeline
-		self.train_transforms = transforms.train_transforms(self.spacing, self.patch_shape)
-		self.test_transforms = transforms.test_transforms(self.spacing, self.patch_shape)
+		# training and testing augmentation pipeline from pipeline yaml
+		self.train_transforms = transforms.train_transforms(self.spacing, self.patch_shape,self.training_pipeline)
+		self.test_transforms = transforms.test_transforms(self.spacing, self.patch_shape,self.training_pipeline)
 
 		#  get input and output datasets
 		self.train_iterator = self.dataset_iterator(self.train_data_dir,self.train_transforms)
@@ -648,17 +650,12 @@ class MedicalImageClassifier(object):
 
 			# check image data exists
 			image_paths = []
-			image_file_exists = True
 			for image_channel in range(self.input_channel_num):
 				image_paths.append(os.path.join(self.evaluation_data_dir,case,self.config['PredictionSetting']['Data']['ImageFilenames'][image_channel]))
 
 				if not os.path.exists(image_paths[image_channel]):
-					image_file_exists = False
+					print("{}: Image file not found at {}".format(datetime.datetime.now(),os.path.dirname(image_paths[image_channel])))
 					break
-
-			if not image_file_exists:
-				print("{}: Image file not found at {}".format(datetime.datetime.now(),os.path.dirname(image_paths[0])))
-				break
 
 			print("{}: Evaluating image at {}".format(datetime.datetime.now(),os.path.dirname(image_paths[0])))
 
@@ -719,10 +716,7 @@ class MedicalImageClassifier(object):
 			output = {'case': case}
 
 			for channel in range(self.output_channel_num):
-				if self.input_channel_num == 1:
-					output[self.class_names[channel]] = prob[channel]
-				else:
-					output[self.class_names[channel]] = prob[0][0,channel]
+				output[self.class_names[channel]] = prob[0][0,channel]
 			output_df = output_df.append(output, ignore_index=True)
 
 			if self.report_output:
@@ -731,10 +725,7 @@ class MedicalImageClassifier(object):
 
 			tqdm.write("{}: Evaluation of {} complete:".format(datetime.datetime.now(), case))
 			for i in range(self.output_channel_num):
-				if self.input_channel_num == 1:
-					tqdm.write("{}: {}%".format(self.class_names[i],prob[0][i]*100))
-				else:
-					tqdm.write("{}: {}%".format(self.class_names[i],prob[0][0,i]*100))
+				tqdm.write("{}: {:.4f}%".format(self.class_names[i],prob[0][0,i]*100))
 
 		# write csv
 		output_df.to_csv(self.evaluation_output_filename,index=False)

@@ -1,12 +1,12 @@
 - model: Medical Image Classifier
   description: CNN Classifier using Tensorflow for medical images with NIFTI input
   operations:
-    prepare-config:
-      description: Prepare the configuration files for training and validation
-      main: configs.prepare_config
+    prepare-train-config:
+      description: Prepare the configuration files for training
+      main: configs.prepare_training_config
       requires:
-        - file: configs/config_carotid_resnet_mixed_mag.json
-          name: config_template
+        - file: ./configs
+          name: config_dir
       flags-dest: args
       flags-import:
         - tmp_json
@@ -14,7 +14,27 @@
         - fold
         - log_dir
         - ckpt_dir
+        - max_steps
         - epoches
+        - output
+        - pipeline
+
+    prepare-test-config:
+      description: Prepare the configuration files for testing
+      main: configs.prepare_testing_config
+      requires:
+        - file: ./configs
+          name: config_dir
+        - file: /mnt/DIIR-JK-NAS/data/carotid/results
+      flags-dest: args
+      flags-import:
+        - tmp_json
+        - data_dir
+        - output
+        - model
+        - ckpt
+        - csv
+        - pipeline
 
     train:
       description: Train the medical image classifier
@@ -25,7 +45,7 @@
       flags:
         config_json: config_out.json
       requires:
-        - operation: prepare-config
+        - operation: prepare-train-config
         - file: /mnt/DIIR-JK-NAS/data/carotid/data_kfold/
       output-scalars:
         - '(\value): step (?P<step>\step): get next element ok'
@@ -42,21 +62,55 @@
         - '(\value): Testing specificity: (?P<test_specificity>\value)'
         - '(\value): Testing auc: (?P<test_auc>\value)'
         
-    # predict:
-    #   description: Validate the classifier performance
+    predict:
+      description: Perform prediction on given dataset
+      main: main --phase PREDICT
+      flags-import:
+        - config_json
+      flags:
+        config_json: config_out.json
+      requires: 
+        - operation: prepare-test-config
+        - file: /mnt/DIIR-JK-NAS/data/carotid/data_kfold/
 
-    pipeline:
+    benchmark:
+      description: Perform benchmark according to prediction results
+      main: utils.benchmark
+      flags-import:
+         - 
+
+    pipeline-all:
       description: Machine learning pipeline for medical image classification
       flags: 
-        fold: [2,3,4]
-        epoches: 80
+        fold: [0,1,2,3,4]
+        max_step: 1500
+        dataset: [image, cfd_mag, mixed_mag]
       steps:
-        - run: prepare-config
+        - run: pipeline-train
           flags:
-            tmp_json: config_carotid_resnet_mixed_mag.json
+          fold: ${fold}
+          dataset: ${dataset}
+          max_step: ${max_step}
+        - run: pipeline-post-train
+          flags:
+            fold: ${fold}
+            dataset: ${dataset}
+            step: ${max_step}
+  
+    pipeline-train:
+      description: Training pipeline
+      flags:
+        fold: [0,1,2,3,4]
+        dataset: [image, cfd_mag, mixed_mag]
+        max_step: 1500
+      steps:
+        - run: prepare-train-config
+          flags:
+            tmp_json: configs/config_carotid_resnet_${dataset}.json
             data_dir: "/mnt/DIIR-JK-NAS/data/carotid/data_kfold"
             fold: ${fold}
-            epoches: ${epoches}
+            max_step: ${max_step}
+            pipeline: pipeline/pipeline_carotid_${dataset}.yaml
             # output to system directory
             log_dir: "/mnt/DIIR-JK-NAS/projects/Medical-Image-Classifier/tmp_carotid"
             ckpt_dir: "/mnt/DIIR-JK-NAS/projects/Medical-Image-Classifier/tmp_carotid"
@@ -64,3 +118,22 @@
             # log_dir: "./tmp_carotid"
             # ckpt_dir: "./tmp_carotid"
         - run: train
+
+    pipeline-post-train:
+      description: Post training pipeline
+      flags:
+        fold: [0,1,2,3,4]
+        dataset: [image, cfd_mag, mixed_mag]
+        step: [720] 
+      steps:
+        - run: prepare-test-config
+          flags:
+            tmp_json: ./configs/config_carotid_resnet_${dataset}.json
+            data_dir: /mnt/DIIR-JK-NAS/data/carotid/data_kfold/fold_${fold}/test
+            csv: /mnt/DIIR-JK-NAS/data/carotid/results/resnet_${dataset}_fold_${fold}_LR-4_2_xent_mom-0.9.csv
+            model: /mnt/DIIR-JK-NAS/projects/Medical-Image-Classifier/tmp_carotid/${dataset}_resnet_fold_${fold}_LR-4_2_xent_mom-0.9/ckpt/checkpoint-${step}.meta
+            ckpt: /mnt/DIIR-JK-NAS/projects/Medical-Image-Classifier/tmp_carotid/${dataset}_resnet_fold_${fold}_LR-4_2_xent_mom-0.9/ckpt/checkpoint-${step}
+        - run: predict
+        # - run: benchmark
+        #   flags:
+        #     ground_truth: ./

@@ -1,0 +1,54 @@
+description: carotid stenosis stroke pipeline for image only input
+disease: carotid stenosis
+modality: CTA
+preprocess:
+  train: 
+    3D:
+      - name: "RandomNoise"
+        variables:
+          noise_factor: 0.05
+    2D:
+      - name: "ManualNormalization"
+        variables: 
+          windowMinMaxList: [[0,128]]
+      - name: "Resample2D"
+        variables: 
+          voxel_size: !spacing
+      - name: "Padding2D"
+        variables: 
+          output_size: !patch_shape
+      - name: "RandomCrop2D"
+        variables: 
+          output_size: !patch_shape
+  test:
+    3D:
+
+    2D:
+      - name: "ManualNormalization"
+        variables: 
+          windowMinMaxList: [[0,128]]
+      - name: "Resample2D"
+        variables: 
+          voxel_size: !spacing
+      - name: "Padding2D"
+        variables: 
+          output_size: !patch_shape
+      - name: "RandomCrop2D"
+        variables: 
+          output_size: !patch_shape
+
+  evaluate:
+    3D:
+    2D:
+      - name: "ManualNormalization"
+        variables: 
+          windowMinMaxList: [[0,128]]
+      - name: "Resample2D"
+        variables: 
+          voxel_size: !spacing
+      - name: "Padding2D"
+        variables: 
+          output_size: !patch_shape
+      - name: "CropCenter2D"
+        variables: 
+          output_size: !patch_shape

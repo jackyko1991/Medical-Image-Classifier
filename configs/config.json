@@ -41,7 +41,8 @@
                 "Factor": 0.95,
                 "Step": 100
             }
-        }
+        },
+        "Pipeline": "./pipeline/pipeline.yaml"
     },
     "PredictionSetting":{
         "Data":{
@@ -50,7 +51,8 @@
             "OutputFilename":"./data/dataset/prediction.csv"
         },
         "ModelPath": "./tmp/ckpt/checkpoint-00001.meta",
-        "CheckPointPath": "./tmp/ckpt/checkpoint-00001"
+        "CheckPointPath": "./tmp/ckpt/checkpoint-00001",
+        "Pipeline": "./pipeline/pipeline.yaml"
     }
 }
 

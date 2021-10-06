@@ -32,6 +32,12 @@ The `prepare-config` step will use helper file [./config/prepare_config.py](./co
 $ guild run -b pipeline 
 ```
 
+For all Guild run operations you may check with 
+```bash
+$ guild help
+```
+Then press `q` to quit.
+
 When training is complete use following command to read the output. Since we use Tensorflow to log performance, Guild AI will read all scalars from the `.event` file and creating redundant outputs. 
 
 ```bash
