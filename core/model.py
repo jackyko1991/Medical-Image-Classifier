@@ -490,12 +490,19 @@ class MedicalImageClassifier(object):
 			# training phase
 			while True:
 				if self.global_step.eval() > self.max_steps:
-					sys.exit("Reach maximum training steps")
+					print("{}: Reach maximum training steps".format(datetime.datetime.now()))
+					print("{}: Saving checkpoint of step {} at {}...".format(datetime.datetime.now(),self.global_step.eval()-1,self.ckpt_dir))
+					if not (os.path.exists(self.ckpt_dir)):
+						os.makedirs(self.ckpt_dir,exist_ok=True)
+					saver.save(self.sess, checkpoint_prefix, 
+						global_step=tf.train.global_step(self.sess, self.global_step-1),
+						latest_filename="checkpoint-latest")
+					sys.exit(0)
 				try:
 					self.sess.run(tf.initializers.local_variables())
 					images, label = self.sess.run(self.next_element_train)
 					# print("{}: step {}: get next element ok".format(datetime.datetime.now(), self.global_step.eval()))
-					print("step {}: get next element ok".format(self.global_step.eval()))
+					print("{}: step {} get next element ok".format(datetime.datetime.now(),self.global_step.eval()))
 					if images.shape[0] < self.batch_size:
 						# if self.dimension == 2:
 						# 	images_zero_pads = np.zeros((self.batch_size-images.shape[0],images.shape[1],images.shape[2],images.shape[3]))

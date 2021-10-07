@@ -18,6 +18,7 @@
         - epoches
         - output
         - pipeline
+        - learning_rate
 
     prepare-test-config:
       description: Prepare the configuration files for testing
@@ -47,6 +48,7 @@
       requires:
         - operation: prepare-train-config
         - file: /mnt/DIIR-JK-NAS/data/carotid/data_kfold/
+        - file: ./pipeline
       output-scalars:
         - '(\value): step (?P<step>\step): get next element ok'
         - '(\value): Training loss: (?P<train_loss>\value)'
@@ -72,6 +74,7 @@
       requires: 
         - operation: prepare-test-config
         - file: /mnt/DIIR-JK-NAS/data/carotid/data_kfold/
+        - file: ./pipeline
 
     benchmark:
       description: Perform benchmark according to prediction results
@@ -83,37 +86,42 @@
       description: Machine learning pipeline for medical image classification
       flags: 
         fold: [0,1,2,3,4]
-        max_step: 1500
+        max_steps: 1500
         dataset: [image, cfd_mag, mixed_mag]
+        learning_rate: 1e-4
       steps:
         - run: pipeline-train
           flags:
-          fold: ${fold}
-          dataset: ${dataset}
-          max_step: ${max_step}
+            fold: ${fold}
+            dataset: ${dataset}
+            max_steps: ${max_steps}
+            learning_rate: ${learning_rate}
         - run: pipeline-post-train
           flags:
             fold: ${fold}
             dataset: ${dataset}
-            step: ${max_step}
+            step: ${max_steps}
+            learning_rate: ${learning_rate}
   
     pipeline-train:
       description: Training pipeline
       flags:
         fold: [0,1,2,3,4]
         dataset: [image, cfd_mag, mixed_mag]
-        max_step: 1500
+        max_steps: 10
+        epoches: 999999 # control training termination by max_steps instead of epoches when use guild automated pipeline
+        learning_rate: 1e-4
       steps:
         - run: prepare-train-config
           flags:
             tmp_json: configs/config_carotid_resnet_${dataset}.json
             data_dir: "/mnt/DIIR-JK-NAS/data/carotid/data_kfold"
             fold: ${fold}
-            max_step: ${max_step}
+            max_steps: ${max_steps}
             pipeline: pipeline/pipeline_carotid_${dataset}.yaml
             # output to system directory
-            log_dir: "/mnt/DIIR-JK-NAS/projects/Medical-Image-Classifier/tmp_carotid"
-            ckpt_dir: "/mnt/DIIR-JK-NAS/projects/Medical-Image-Classifier/tmp_carotid"
+            log_dir: "/mnt/DIIR-JK-NAS/projects/Medical-Image-Classifier/tmp_carotid/${dataset}_resnet_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9/log"
+            ckpt_dir: "/mnt/DIIR-JK-NAS/projects/Medical-Image-Classifier/tmp_carotid/${dataset}_resnet_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9/ckpt"
             # # output to guild run directory
             # log_dir: "./tmp_carotid"
             # ckpt_dir: "./tmp_carotid"
@@ -124,16 +132,20 @@
       flags:
         fold: [0,1,2,3,4]
         dataset: [image, cfd_mag, mixed_mag]
-        step: [720] 
+        step: [9]
+        phase: [train, test]
+        learning_rate: 1e-4
       steps:
         - run: prepare-test-config
           flags:
             tmp_json: ./configs/config_carotid_resnet_${dataset}.json
-            data_dir: /mnt/DIIR-JK-NAS/data/carotid/data_kfold/fold_${fold}/test
-            csv: /mnt/DIIR-JK-NAS/data/carotid/results/resnet_${dataset}_fold_${fold}_LR-4_2_xent_mom-0.9.csv
-            model: /mnt/DIIR-JK-NAS/projects/Medical-Image-Classifier/tmp_carotid/${dataset}_resnet_fold_${fold}_LR-4_2_xent_mom-0.9/ckpt/checkpoint-${step}.meta
-            ckpt: /mnt/DIIR-JK-NAS/projects/Medical-Image-Classifier/tmp_carotid/${dataset}_resnet_fold_${fold}_LR-4_2_xent_mom-0.9/ckpt/checkpoint-${step}
+            data_dir: /mnt/DIIR-JK-NAS/data/carotid/data_kfold/fold_${fold}/${phase}
+            csv: /mnt/DIIR-JK-NAS/data/carotid/results/resnet_${dataset}_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9_${phase}_${step}.csv
+            model: /mnt/DIIR-JK-NAS/projects/Medical-Image-Classifier/tmp_carotid/${dataset}_resnet_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9/ckpt/checkpoint-${step}.meta
+            ckpt: /mnt/DIIR-JK-NAS/projects/Medical-Image-Classifier/tmp_carotid/${dataset}_resnet_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9/ckpt/checkpoint-${step}
+            pipeline: pipeline/pipeline_carotid_${dataset}.yaml
         - run: predict
-        # - run: benchmark
-        #   flags:
-        #     ground_truth: ./
+        - run: benchmark
+          flags:
+            ground_truth: 
+            predict: /mnt/DIIR-JK-NAS/data/carotid/results/resnet_${dataset}_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9_${phase}_${step}.csv
