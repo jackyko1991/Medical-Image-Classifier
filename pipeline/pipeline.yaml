@@ -37,7 +37,7 @@ preprocess:
         variables: 
           output_size: !patch_shape
 
-  evaluate:
+  predict:
     3D:
     2D:
       - name: "ManualNormalization"

@@ -778,8 +778,8 @@ class CropCenter2D(object):
 
 			image_center = images[0].TransformIndexToPhysicalPoint([round(images[0].GetSize()[0]/2),round(images[0].GetSize()[1]/2)])
 			new_origin = [0,0]
-			new_origin[0] = image_center[0]-output_size[0]/2*images[0].GetSpacing()[0]
-			new_origin[1] = image_center[1]-output_size[1]/2*images[0].GetSpacing()[1]
+			new_origin[0] = image_center[0]-output_size[0]/2*images[0].GetSpacing()[0]*images[0].GetDirection()[0]
+			new_origin[1] = image_center[1]-output_size[1]/2*images[0].GetSpacing()[1]*images[0].GetDirection()[2]
 
 			resampler = sitk.ResampleImageFilter()
 			resampler.SetOutputSpacing(images[0].GetSpacing())
@@ -822,10 +822,11 @@ class CropCenter3D(object):
 				round(images[0].GetSize()[1]/2),
 				round(images[0].GetSize()[2]/2),
 				])
+
 			new_origin = [0,0,0]
-			new_origin[0] = image_center[0]-output_size[0]/2*images[0].GetSpacing()[0]
-			new_origin[1] = image_center[1]-output_size[1]/2*images[0].GetSpacing()[1]
-			new_origin[2] = image_center[2]-output_size[2]/2*images[0].GetSpacing()[2]
+			new_origin[0] = image_center[0]-output_size[0]/2*images[0].GetSpacing()[0]*images[0].GetDirection()[0]
+			new_origin[1] = image_center[1]-output_size[1]/2*images[0].GetSpacing()[1]*images[0].GetDirection()[4]
+			new_origin[2] = image_center[2]-output_size[2]/2*images[0].GetSpacing()[2]*images[0].GetDirection()[8]
 
 			resampler = sitk.ResampleImageFilter()
 			resampler.SetOutputSpacing(images[0].GetSpacing())

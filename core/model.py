@@ -528,9 +528,9 @@ class MedicalImageClassifier(object):
 					print("{}: Training sensitivity: {:.4f}".format(datetime.datetime.now(),sensitivity))
 					print("{}: Training specificity: {:.4f}".format(datetime.datetime.now(),specificity))
 					print("{}: Training auc: {:.4f}".format(datetime.datetime.now(),auc))
-					print("{}: Training ground truth: \n{}".format(datetime.datetime.now(),label[:]))
-					print("{}: Training result: \n{}".format(datetime.datetime.now(),result[:]))
-					print("{}: Training probability: \n{}".format(datetime.datetime.now(),prob[:]))
+					print("{}: Training ground truth: \n{}".format(datetime.datetime.now(),label[:5]))
+					print("{}: Training result: \n{}".format(datetime.datetime.now(),result[:5]))
+					print("{}: Training probability: \n{}".format(datetime.datetime.now(),prob[:5]))
 
 					# perform summary log after training op
 					summary = self.sess.run(summary_op,feed_dict={
@@ -630,7 +630,7 @@ class MedicalImageClassifier(object):
 		imported_meta = tf.train.import_meta_graph(self.model_path)
 
 		# create transformation to image
-		predict_transforms = transforms.predict_transforms(self.spacing, self.patch_shape)
+		predict_transforms = transforms.predict_transforms(self.spacing, self.patch_shape, self.evaluation_pipeline)
 
 		print("{}: Start evaluation...".format(datetime.datetime.now()))
 
