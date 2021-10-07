@@ -19,12 +19,13 @@ class PatchShapeConstructor:
 
 def get_loader(spacing, patch_shape):
     """Add constructors to PyYAML loader."""
-    loader = yaml.SafeLoader
+    loader = yaml.Loader
     spacing_constructor = SpacingConstructor(spacing)
     patch_shape_constructor = PatchShapeConstructor(patch_shape)
 
     loader.add_constructor("!spacing", spacing_constructor)
     loader.add_constructor("!patch_shape", patch_shape_constructor)
+    # loader.add_constructor('!composite_transform', composite_transform_constructor)
     return loader
 
 def load_pipeline(spacing, patch_shape, pipeline_yaml, verbose=True):
@@ -32,7 +33,7 @@ def load_pipeline(spacing, patch_shape, pipeline_yaml, verbose=True):
         pipeline_ = yaml.load(f, Loader=get_loader(spacing,patch_shape))
 
     # start preprocessing
-    print(pipeline_["preprocess"])
+    # print(pipeline_["preprocess"])
 
     train_transform_3d = []
     train_transform_2d = []
@@ -41,7 +42,15 @@ def load_pipeline(spacing, patch_shape, pipeline_yaml, verbose=True):
 
     if pipeline_["preprocess"]["train"]["3D"] is not None:
         for transform in pipeline_["preprocess"]["train"]["3D"]:
-            tfm_cls = getattr(NiftiDataset,transform["name"])(*[],**transform["variables"])
+
+            if transform["name"] == "CompositeTransform":
+                method_channel_list = []
+                for method in transform["variables"]["method_channel_list"]:
+                    tfm_cls_ch = getattr(NiftiDataset, method["name"])(*[],**method["variables"])
+                    method_channel_list.append((tfm_cls_ch, method["channel"]))
+                tfm_cls = NiftiDataset.CompositeTransform(method_channel_list)
+            else:
+                tfm_cls = getattr(NiftiDataset,transform["name"])(*[],**transform["variables"])
             train_transform_3d.append(tfm_cls)
 
     if pipeline_["preprocess"]["train"]["2D"] is not None:
@@ -79,18 +88,18 @@ def main():
     spacing = [1, 1, 1]
     patch_shape = [32,32,200]
 
-    transforms = load_pipeline(spacing, patch_shape,"./pipeline/pipeline_carotid_image.yaml")
+    transforms = load_pipeline(spacing, patch_shape,"./pipeline/pipeline_carotid_cfd_mag.yaml")
 
     # test the trasform
     image_dir = "/mnt/DIIR-JK-NAS/data/carotid/data_kfold/fold_0/test/002_left"
     image_output_dir = "/mnt/DIIR-JK-NAS/data/carotid/data_kfold/fold_0/test/002_left/transformed_output"
-    image_files = ["image.nii.gz"]
+    image_files = ["p.nii.gz","U_mag.nii.gz"]
     sample = {"images": []}
 
     for image_file in image_files:
         sample["images"].append(sitk.ReadImage(os.path.join(image_dir,image_file)))
 
-    for tfm in transforms["test_transform_3d"]:
+    for tfm in transforms["train_transform_3d"]:
         sample = tfm(sample)
 
     # export the output

@@ -865,7 +865,15 @@ class CompositeTransform(object):
 	def __call__(self,sample):
 		images = sample['images']
 
-		
+		for method, channels in self.method_channel_list:
+			images_selected = []
+			for channel in channels:
+				images_selected.append(images[channel])
+			images_selected = method({"images": images_selected})
+
+			for channel, image in zip(channels,images_selected["images"]):
+				images[channel] = image
+
 		return {'images': images}
 
 # class ConfidenceCrop(object):

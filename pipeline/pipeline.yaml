@@ -7,6 +7,17 @@ preprocess:
       - name: "RandomNoise"
         variables:
           noise_factor: 0.05
+      - name: "CompositeTransform"
+        variables:
+          method_channel_list:
+            - name: "StatisticalNormalization"
+              variables:
+                sigma: 0.05
+              channel: [0]
+            - name: "ManualNormalization"
+              variables:
+                windowMinMaxList: [[0,5],[0,5]]
+              channel: [1,2]
     2D:
       - name: "ManualNormalization"
         variables: 
