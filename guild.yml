@@ -79,13 +79,26 @@
     benchmark:
       description: Perform benchmark according to prediction results
       main: utils.benchmark
+      requires:
+        - file: /mnt/DIIR-JK-NAS/data/carotid/results
+        - file: ./configs
       flags-import:
-         - 
+        - ground_truth
+        - predict
+        - output
+        - plot_dir
+        - config_json
+      output-scalars:
+        AUC: 'AUC: (\value)'
+        precision: 'precision: (\value)'
+        sensitivity: 'sensitivity: (\value)'
+        fscore: 'fscore: (\value)'
 
     pipeline-all:
       description: Machine learning pipeline for medical image classification
       flags: 
         fold: [0,1,2,3,4]
+        epoches: 999999
         max_steps: 1500
         dataset: [image, cfd_mag, mixed_mag]
         learning_rate: 1e-4
@@ -96,6 +109,7 @@
             dataset: ${dataset}
             max_steps: ${max_steps}
             learning_rate: ${learning_rate}
+            epoches: ${epoches}
         - run: pipeline-post-train
           flags:
             fold: ${fold}
@@ -118,6 +132,7 @@
             data_dir: "/mnt/DIIR-JK-NAS/data/carotid/data_kfold"
             fold: ${fold}
             max_steps: ${max_steps}
+            epoches: ${epoches}
             pipeline: pipeline/pipeline_carotid_${dataset}.yaml
             # output to system directory
             log_dir: "/mnt/DIIR-JK-NAS/projects/Medical-Image-Classifier/tmp_carotid/${dataset}_resnet_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9/log"
@@ -147,5 +162,8 @@
         - run: predict
         - run: benchmark
           flags:
-            ground_truth: 
+            ground_truth: /mnt/DIIR-JK-NAS/data/carotid/data_kfold/label.csv
             predict: /mnt/DIIR-JK-NAS/data/carotid/results/resnet_${dataset}_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9_${phase}_${step}.csv
+            output: /mnt/DIIR-JK-NAS/data/carotid/results/metrics/resnet_${dataset}_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9_${phase}_${step}.csv
+            plot_dir: /mnt/DIIR-JK-NAS/data/carotid/results/plots/resnet_${dataset}_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9_${phase}_${step}
+            config_json: ./configs/config_carotid_resnet_${dataset}.json
