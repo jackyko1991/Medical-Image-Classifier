@@ -74,6 +74,10 @@ def main(args):
     gt = gt[columns]
     gt = gt[gt.case.isin(pred["case"])]
 
+    # sorting
+    gt = gt.sort_values(by=["case"])
+    pred = pred.sort_values(by=["case"])
+
     y_true = np.argmax(gt[classnames].to_numpy(),axis=1)
     y_pred = np.argmax(pred[classnames].to_numpy(),axis=1)
 
