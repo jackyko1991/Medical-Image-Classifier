@@ -7,6 +7,7 @@
     "Network": {
         "PatchShape": [256,256,256],
         "Name":"ResNet",
+        "Config": [2],
         "Dropout":0.1,
         "Spacing": [0.25,0.25,0.25]
     },
@@ -18,7 +19,8 @@
             "LabelFilename":"./data/dataset_no_preprocessing/labels.csv",
             "ClassNames":["STROKE"],
             "AdditionalFeaturesFilename": "./data/dataset_no_preprocessing/features.csv",
-            "AdditionalFeatures": ["Feature1","Feature2"]
+            "AdditionalFeatures": ["Feature1","Feature2"],
+            "Weights": [1.0,1.0,1.0,1.0]
         },
         "BatchSize": 1,
         "ImageLog": false,

@@ -15,7 +15,7 @@ We have prepared the template configuration json in [./config/config_template.js
 In Guild AI each step will run in independent directory. What you need is to edit [guild.yml](./guild.yml) and change the corresponding hyperparameters under `flags` of `pipeline`:
 
 ```yml
-pipeline:
+pipeline-all:
     description: Machine learning pipeline for medical image classification
     flags: 
         fold: [1,2,3,4,5]
@@ -29,7 +29,7 @@ pipeline:
 The `prepare-config` step will use helper file [./config/prepare_config.py](./config/prepare_config.py) to generate the necessary configuraiton json. Currently the helper file is limited to common hyperparameter tuning and you may need to edit to fit your application. To specify the training step to use the generated configuration file, use the command:
 
 ```bash
-$ guild run -b pipeline 
+$ guild run pipeline-all epoches=20
 ```
 
 For all Guild run operations you may check with 

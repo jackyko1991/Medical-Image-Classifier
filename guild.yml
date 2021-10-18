@@ -19,6 +19,8 @@
         - output
         - pipeline
         - learning_rate
+        - network
+        - network_config
 
     prepare-test-config:
       description: Prepare the configuration files for testing
@@ -43,11 +45,13 @@
       flags-dest: args
       flags-import:
         - config_json
+        - gpu
       flags:
         config_json: config_out.json
       requires:
         - operation: prepare-train-config
-        - file: /mnt/DIIR-JK-NAS/data/carotid/data_kfold/
+        # - file: /mnt/DIIR-JK-NAS/data/carotid/data_kfold/
+        - file:  /home/jacky/data_disk/data/carotid/data_kfold/
         - file: ./pipeline
       output-scalars:
         - '(\value): step (?P<step>\step): get next element ok'
@@ -69,11 +73,13 @@
       main: main --phase PREDICT
       flags-import:
         - config_json
+        - gpu
       flags:
         config_json: config_out.json
       requires: 
         - operation: prepare-test-config
-        - file: /mnt/DIIR-JK-NAS/data/carotid/data_kfold/
+        #- file: /mnt/DIIR-JK-NAS/data/carotid/data_kfold/
+        - file: /home/jacky/data_disk/data/carotid/data_kfold
         - file: ./pipeline
 
     benchmark:
@@ -81,6 +87,7 @@
       main: utils.benchmark
       requires:
         - file: /mnt/DIIR-JK-NAS/data/carotid/results
+        - file: /home/jacky/data_disk/tf_log
         - file: ./configs
       flags-import:
         - ground_truth
@@ -102,6 +109,8 @@
         max_steps: 1500
         dataset: [image, cfd_mag, mixed_mag]
         learning_rate: 1e-4
+        network: [vgg, resnet]
+        gpu: [0,1]
       steps:
         - run: pipeline-train
           flags:
@@ -110,12 +119,16 @@
             max_steps: ${max_steps}
             learning_rate: ${learning_rate}
             epoches: ${epoches}
+            network: ${network}
+            gpu: ${gpu}
         - run: pipeline-post-train
           flags:
             fold: ${fold}
             dataset: ${dataset}
             step: ${max_steps}
             learning_rate: ${learning_rate}
+            network: ${network}
+            gpu: ${gpu}
   
     pipeline-train:
       description: Training pipeline
@@ -125,22 +138,30 @@
         max_steps: 10
         epoches: 999999 # control training termination by max_steps instead of epoches when use guild automated pipeline
         learning_rate: 1e-4
+        network: [resnet]
+        network_config: [2]
+        gpu: [0,1]
       steps:
         - run: prepare-train-config
           flags:
-            tmp_json: configs/config_carotid_resnet_${dataset}.json
-            data_dir: "/mnt/DIIR-JK-NAS/data/carotid/data_kfold"
+            tmp_json: configs/config_carotid_${network}_${dataset}.json
+            # data_dir: "/mnt/DIIR-JK-NAS/data/carotid/data_kfold"
+            data_dir: /home/jacky/data_disk/data/carotid/data_kfold
             fold: ${fold}
             max_steps: ${max_steps}
             epoches: ${epoches}
             pipeline: pipeline/pipeline_carotid_${dataset}.yaml
             # output to system directory
-            log_dir: "/mnt/DIIR-JK-NAS/projects/Medical-Image-Classifier/tmp_carotid/${dataset}_resnet_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9/log"
-            ckpt_dir: "/mnt/DIIR-JK-NAS/projects/Medical-Image-Classifier/tmp_carotid/${dataset}_resnet_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9/ckpt"
+            #log_dir: "/mnt/DIIR-JK-NAS/projects/Medical-Image-Classifier/tmp_carotid/${dataset}_${network}_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9/log"
+            #ckpt_dir: "/mnt/DIIR-JK-NAS/projects/Medical-Image-Classifier/tmp_carotid/${dataset}_${network}_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9/ckpt"
             # # output to guild run directory
             # log_dir: "./tmp_carotid"
             # ckpt_dir: "./tmp_carotid"
+            log_dir: /home/jacky/data_disk/tf_log/carotid/${dataset}_${network}_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9/log
+            ckpt_dir: /home/jacky/data_disk/tf_log/carotid/${dataset}_${network}_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9/ckpt
         - run: train
+          flags:
+            gpu: ${gpu}
 
     pipeline-post-train:
       description: Post training pipeline
@@ -150,20 +171,27 @@
         step: [9]
         phase: [train, test]
         learning_rate: 1e-4
+        network: [resnet]
+        gpu: [0,1]
       steps:
         - run: prepare-test-config
           flags:
-            tmp_json: ./configs/config_carotid_resnet_${dataset}.json
-            data_dir: /mnt/DIIR-JK-NAS/data/carotid/data_kfold/fold_${fold}/${phase}
-            csv: /mnt/DIIR-JK-NAS/data/carotid/results/resnet_${dataset}_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9_${phase}_${step}.csv
-            model: /mnt/DIIR-JK-NAS/projects/Medical-Image-Classifier/tmp_carotid/${dataset}_resnet_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9/ckpt/checkpoint-${step}.meta
-            ckpt: /mnt/DIIR-JK-NAS/projects/Medical-Image-Classifier/tmp_carotid/${dataset}_resnet_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9/ckpt/checkpoint-${step}
+            tmp_json: ./configs/config_carotid_${network}_${dataset}.json
+            #data_dir: /mnt/DIIR-JK-NAS/data/carotid/data_kfold/fold_${fold}/${phase}
+            data_dir: /home/jacky/data_disk/data/carotid/data_kfold/fold_${fold}/${phase}
+            csv: /mnt/DIIR-JK-NAS/data/carotid/results/${network}_${dataset}_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9_${phase}_${step}.csv
+            #model: /mnt/DIIR-JK-NAS/projects/Medical-Image-Classifier/tmp_carotid/${dataset}_${network}_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9/ckpt/checkpoint-${step}.meta
+            #ckpt: /mnt/DIIR-JK-NAS/projects/Medical-Image-Classifier/tmp_carotid/${dataset}_${network}_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9/ckpt/checkpoint-${step}
+            model: /home/jacky/data_disk/tf_log/carotid/${dataset}_${network}_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9/ckpt/checkpoint-${step}.meta
+            ckpt: /home/jacky/data_disk/tf_log/carotid/${dataset}_${network}_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9/ckpt/checkpoint-${step}
             pipeline: pipeline/pipeline_carotid_${dataset}.yaml
         - run: predict
+          flags:
+            gpu: ${gpu}
         - run: benchmark
           flags:
             ground_truth: /mnt/DIIR-JK-NAS/data/carotid/data_kfold/label.csv
-            predict: /mnt/DIIR-JK-NAS/data/carotid/results/resnet_${dataset}_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9_${phase}_${step}.csv
-            output: /mnt/DIIR-JK-NAS/data/carotid/results/metrics/resnet_${dataset}_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9_${phase}_${step}.csv
-            plot_dir: /mnt/DIIR-JK-NAS/data/carotid/results/plots/resnet_${dataset}_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9_${phase}_${step}
-            config_json: ./configs/config_carotid_resnet_${dataset}.json
+            predict: /mnt/DIIR-JK-NAS/data/carotid/results/${network}_${dataset}_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9_${phase}_${step}.csv
+            output: /mnt/DIIR-JK-NAS/data/carotid/results/metrics/${network}_${dataset}_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9_${phase}_${step}.csv
+            plot_dir: /mnt/DIIR-JK-NAS/data/carotid/results/plots/${network}_${dataset}_fold_${fold}_LR_${learning_rate}_2_xent_mom-0.9_${phase}_${step}
+            config_json: ./configs/config_carotid_${network}_${dataset}.json

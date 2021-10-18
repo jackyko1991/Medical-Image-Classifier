@@ -71,6 +71,8 @@ class MedicalImageClassifier(object):
 		self.image_filenames = self.config['TrainingSetting']['Data']['ImageFilenames']
 		self.label_filename = self.config['TrainingSetting']['Data']['LabelFilename']
 		self.class_names = self.config['TrainingSetting']['Data']['ClassNames']
+		self.class_weights = self.config['TrainingSetting']['Data']['Weights']
+		assert len(self.class_weights) == self.output_channel_num, "Length of class weight inconsisent with number of classes"
 
 		# additional features
 		if ('AdditionalFeaturesFilename' in self.config["TrainingSetting"]['Data']) and ('AdditionalFeatures' in self.config["TrainingSetting"]['Data']):
@@ -96,6 +98,7 @@ class MedicalImageClassifier(object):
 
 		self.network_name = self.config['Network']['Name']
 		self.network_dropout_rate = self.config['Network']['Dropout']
+		self.network_config = self.config['Network']['Config']
 		self.spacing = self.config['Network']['Spacing']
 		self.patch_shape = self.config['Network']['PatchShape']
 		self.dimension = len(self.config['Network']['PatchShape'])
@@ -260,7 +263,7 @@ class MedicalImageClassifier(object):
 					is_training=True,
 					activation_fn="relu",
 					dropout=self.dropout_placeholder,
-					module_config=[2,2,3,3,3],
+					module_config=self.network_config, #[2,2,3,3,3]
 					batch_norm_momentum=0.99,
 					fc_channels=[4096,4096])
 			else:
@@ -270,7 +273,7 @@ class MedicalImageClassifier(object):
 					is_training=True,
 					activation_fn="relu",
 					dropout=self.dropout_placeholder,
-					module_config=[2,2,3,3,3],
+					module_config=self.network_config, #[2,2,3,3,3]
 					batch_norm_momentum=0.99,
 					fc_channels=[4096,4096])
 		elif self.network_name == "ResNet":
@@ -283,7 +286,7 @@ class MedicalImageClassifier(object):
 					dropout=self.dropout_placeholder,
 					init_conv_shape=5,
 					init_pool=True,
-					module_config=[2,2,2])
+					module_config=self.network_config) #[3,3,5,2]
 			else:
 				self.network = networks.Resnet3D(
 					num_classes=self.output_channel_num,
@@ -293,7 +296,7 @@ class MedicalImageClassifier(object):
 					dropout=self.dropout_placeholder,
 					init_conv_shape=5,
 					init_pool=True,
-					module_config=[2])
+					module_config=self.network_config) #[3,3,5,2]
 		else:
 			sys.exit('Invalid Network')
 
@@ -306,11 +309,15 @@ class MedicalImageClassifier(object):
 			#self.logits_additional_features_op = tf.layers.dense(inputs=dense1,units=self.num_classes, activation=None)
 			self.logits_op = tf.layers.dense(inputs=dense1,units=self.num_classes, activation=None)
 
-		if self.classificatin_type == "Multilabel":
+		if self.classificatin_type == "Multilabel" or self.output_channel_num == 1:
 			self.prob_op = tf.sigmoid(self.logits_op)
 			self.result_op = tf.cast(tf.math.round(self.prob_op),dtype=tf.uint8)
 			if self.loss_fn == "xent":
-				self.sigmoid_xent = tf.nn.sigmoid_cross_entropy_with_logits(logits=self.logits_op,labels=self.output_placeholder)
+				if self.output_channel_num == 1:
+					self.sigmoid_xent = tf.nn.weighted_cross_entropy_with_logits(logits=self.logits_op, labels=self.output_placeholder, pos_weight=self.class_weights[0])
+				else:
+					self.sigmoid_xent = tf.nn.weighted_cross_entropy_with_logits(logits=self.logits_op, labels=self.output_placeholder, pos_weight=tf.constant(self.class_weights))
+				#self.sigmoid_xent = tf.nn.sigmoid_cross_entropy_with_logits(logits=self.logits_op,labels=self.output_placeholder)
 				self.loss_op = tf.reduce_mean(self.sigmoid_xent,0)
 			elif self.loss_fn == "sorensen":
 				self.loss_op = dice_loss(y_true=self.output_placeholder,y_pred=self.prob_op)
@@ -320,8 +327,18 @@ class MedicalImageClassifier(object):
 			self.prob_op = tf.nn.softmax(self.logits_op)
 			self.result_op = tf.cast(tf.one_hot(tf.argmax(self.prob_op,1),self.output_channel_num),dtype=tf.uint8)
 			if self.loss_fn == "xent":
-				self.softmax_xent = tf.nn.softmax_cross_entropy_with_logits(logits=self.logits_op,labels=self.output_placeholder)
-				self.loss_op = tf.reduce_mean(self.softmax_xent,0)
+				# class weights
+				class_weights = tf.constant([self.class_weights])
+				# deduce weights for batch samples based on their true label
+				weights = tf.reduce_sum(class_weights * self.output_placeholder, axis=1)
+				# compute your (unweighted) softmax cross entropy loss
+				unweighted_losses = tf.nn.softmax_cross_entropy_with_logits(logits=self.logits_op, labels=self.output_placeholder)
+				# apply the weights, relying on broadcasting of the multiplication
+				weighted_losses = unweighted_losses * weights
+				# reduce the result to get your final loss
+				self.loss_op = tf.reduce_mean(weighted_losses,0)
+				#self.softmax_xent = tf.nn.softmax_cross_entropy_with_logits(logits=self.logits_op,labels=self.output_placeholder)
+				#self.loss_op = tf.reduce_mean(self.softmax_xent,0)
 			elif self.loss_fn == "sorensen":
 				self.loss_op = dice_loss(y_true=self.output_placeholder,y_pred=self.prob_op)
 			elif self.loss_fn == "jaccard":
@@ -652,6 +669,7 @@ class MedicalImageClassifier(object):
 		output_df = pd.DataFrame(columns=columns)
 
 		pbar = tqdm(os.listdir(self.evaluation_data_dir))
+		
 		for case in pbar:
 			pbar.set_description(case)
 
@@ -709,7 +727,7 @@ class MedicalImageClassifier(object):
 
 			images_np = images_np[np.newaxis,]
 
-			if self.classificatin_type == "Multilabel":
+			if self.classificatin_type == "Multilabel" or self.output_channel_num == 1:
 				prob = self.sess.run(['Sigmoid:0'], feed_dict={
 							'Placeholder:0': images_np,
 							'dropout:0':0.0,

@@ -78,8 +78,13 @@ def main(args):
     gt = gt.sort_values(by=["case"])
     pred = pred.sort_values(by=["case"])
 
-    y_true = np.argmax(gt[classnames].to_numpy(),axis=1)
-    y_pred = np.argmax(pred[classnames].to_numpy(),axis=1)
+    if len(classnames) > 1:
+        y_true = np.argmax(gt[classnames].to_numpy(),axis=1)
+        y_pred = np.argmax(pred[classnames].to_numpy(),axis=1)
+    else:
+        y_true = gt[classnames].to_numpy().ravel()
+        # need to set threshold by youden index, current set threshold at 0.5
+        y_pred = np.round(pred[classnames].to_numpy().ravel())
 
     if config["TrainingSetting"]["LossFunction"]["Multiclass/Multilabel"] == "Multiclass":
         # confusion matrix
@@ -91,8 +96,12 @@ def main(args):
         # plot confusion matrix 
         fig_cm, ax_cm = plt.subplots(1,1,figsize=(9,6))
         disp = metrics.ConfusionMatrixDisplay.from_predictions(y_true, y_pred, cmap=plt.cm.Blues, ax=ax_cm)
-        ax_cm.set_xticklabels(classnames)
-        ax_cm.set_yticklabels(classnames)
+        if len(classnames) > 1:
+            ax_cm.set_xticklabels(classnames)
+            ax_cm.set_yticklabels(classnames)
+        else:
+            ax_cm.set_xticklabels([0,1])
+            ax_cm.set_yticklabels([0,1])
 
         # roc
         fig_roc, ax_roc = plt.subplots(1,1,figsize=(9,6))
@@ -118,51 +127,76 @@ def main(args):
             tpr_interp.append(interp_tpr)
 
             auc[classname] = metrics.auc(fpr[classname],tpr[classname])
-            ax_roc.plot(fpr[classname],tpr[classname],label="{} (AUC = {:.2f})".format(classname, auc[classname]),alpha=0.3,lw=1)
+            if len(classnames) > 1:
+                ax_roc.plot(fpr[classname],tpr[classname],label="{} (AUC = {:.2f})".format(classname, auc[classname]),alpha=0.3,lw=1)
+            else:
+                ax_roc.plot(fpr[classname],tpr[classname],label="AUC = {:.2f}".format(auc[classname]),alpha=0.3,lw=1)
 
         # macro average roc and auc 
         tpr["macro"] = np.mean(tpr_interp,axis=0)
         tpr["macro"][-1] = 1.0
         auc["macro"] = metrics.auc(mean_fpr, tpr["macro"])
         fpr["macro"] = mean_fpr
-        ax_roc.plot(fpr["macro"], tpr["macro"],color="b",label="Macro Average (AUC = {:.2f})".format(auc["macro"]),lw=2,alpha=0.8,)
+        if len(classnames) > 1:
+            ax_roc.plot(fpr["macro"], tpr["macro"],color="b",label="Macro Average (AUC = {:.2f})".format(auc["macro"]),lw=2,alpha=0.8,)
         
         # micro average roc and auc
         fpr["micro"], tpr["micro"], thresholds = metrics.roc_curve(gt[classnames].to_numpy().ravel(), pred[classnames].to_numpy().ravel())
         auc["micro"] = metrics.auc(fpr["micro"], tpr["micro"])
 
-        ax_roc.plot(fpr["micro"], tpr["micro"],color="darkorange",label="Micro Average (AUC = {:.2f})".format(auc["micro"]),lw=2,alpha=0.8,)
+        if len(classnames) > 1:
+            ax_roc.plot(fpr["micro"], tpr["micro"],color="darkorange",label="Micro Average (AUC = {:.2f})".format(auc["micro"]),lw=2,alpha=0.8,)
 
         ax_roc.legend(loc="lower right")
         
-        # benchmarks: precision, recall, f1, sensitivity, specificity
-        report = metrics.classification_report(y_true,y_pred, target_names=classnames,output_dict=True)
+        # benchmarks: precision, recall, f1, sensitivity (recall of positive class), specificity (recall of negative class)
+        if len(classnames) > 1:
+            report = metrics.classification_report(y_true,y_pred, target_names=classnames,output_dict=True)
+            #print(metrics.classification_report(y_true,y_pred, target_names=classnames))
+            print("AUC: {}".format(auc["macro"]))
+            print("precision: {}".format(report["macro avg"]["precision"]))
+            print("sensitivity: {}".format(report["macro avg"]["recall"]))
+            print("fscore: {}".format(report["macro avg"]["f1-score"]))
+        else:
+            report = metrics.classification_report(y_true,y_pred,output_dict=True)
+            #print(metrics.classification_report(y_true,y_pred,output_dict=False))
+            print("AUC: {}".format(auc[classnames[0]]))
+            print("precision: {}".format(report["0"]["precision"]))
+            print("sensitivity: {}".format(report["1"]["recall"]))
+            print("fscore: {}".format(report["1"]["f1-score"]))
 
-        print(report)
 
-        print("AUC: {}".format(auc["macro"]))
-        print("precision: {}".format(report["macro avg"]["precision"]))
-        print("sensitivity: {}".format(report["macro avg"]["recall"]))
-        print("fscore: {}".format(report["macro avg"]["f1-score"]))
+        if len(classnames) > 1:
+            output_df = pd.DataFrame(columns= ["class","auc","precision","sensitivity","f1-score"])
+        else:
+            output_df = pd.DataFrame(columns= ["class","auc","sensitivity","specificity","f1-score"])
 
-        output_df = pd.DataFrame(columns= ["class","auc","precision","sensitivity","f1-score"])
+        if len(classnames) > 1:
+            for classname in classnames:
+                output_df = output_df.append({
+                    "class": classname, 
+                    "auc": auc[classname], 
+                    "precision": report[classname]["precision"],
+                    "sensitivity": report[classname]["recall"],
+                    "f1-score": report[classname]["f1-score"]
+                },ignore_index=True)
 
-        for classname in classnames:
+            # for multi class macro and micro average are the same, only macro average is reported
             output_df = output_df.append({
-                "class": classname, 
-                "auc": auc[classname], 
-                "precision": report[classname]["precision"],
-                "sensitivity": report[classname]["recall"],
-                "f1-score": report[classname]["f1-score"]
+                "class": "macro avg", 
+                "auc": auc["macro"], 
+                "precision": report["macro avg"]["precision"],
+                "sensitivity": report["macro avg"]["recall"],
+                "f1-score": report["macro avg"]["f1-score"]
             },ignore_index=True)
-
-        output_df = output_df.append({
-            "class": "macro avg", 
-            "auc": auc["macro"], 
-            "precision": report["macro avg"]["precision"],
-            "sensitivity": report["macro avg"]["recall"],
-            "f1-score": report["macro avg"]["f1-score"]
-        },ignore_index=True)
+        else:
+            output_df = output_df.append({
+                "class": classnames[0], 
+                "auc": auc[classnames[0]], 
+                "specificity": report["0"]["precision"],
+                "sensitivity": report["1"]["recall"],
+                "f1-score": report["1"]["f1-score"]
+            },ignore_index=True)
 
         output_df.to_csv(args.output,index=False)
         
