@@ -86,20 +86,22 @@ def load_pipeline(spacing, patch_shape, pipeline_yaml, verbose=True):
 def main():
     # load the yaml
     spacing = [1, 1, 1]
-    patch_shape = [32,32,200]
+    patch_shape = [64,64,200]
 
-    transforms = load_pipeline(spacing, patch_shape,"./pipeline/pipeline_carotid_cfd_mag.yaml")
+    transforms = load_pipeline(spacing, patch_shape,"./pipeline/pipeline_carotid_image.yaml")
 
     # test the trasform
-    image_dir = "/mnt/DIIR-JK-NAS/data/carotid/data_kfold/fold_0/test/002_left"
-    image_output_dir = "/mnt/DIIR-JK-NAS/data/carotid/data_kfold/fold_0/test/002_left/transformed_output"
-    image_files = ["p.nii.gz","U_mag.nii.gz"]
+    image_dir = "/mnt/DIIR-JK-NAS/data/carotid/data_kfold/fold_1/train/002_left"
+    image_output_dir = "/mnt/DIIR-JK-NAS/data/carotid/data_kfold/fold_1/train/002_left/transformed_output"
+    image_files = ["image.nii.gz"]
     sample = {"images": []}
 
     for image_file in image_files:
         sample["images"].append(sitk.ReadImage(os.path.join(image_dir,image_file)))
 
     for tfm in transforms["train_transform_3d"]:
+        sample = tfm(sample)
+    for tfm in transforms["train_transform_2d"]:
         sample = tfm(sample)
 
     # export the output

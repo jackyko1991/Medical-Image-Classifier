@@ -126,6 +126,8 @@ class NiftiDataset(object):
 			images_np_ = np.asarray(images_np_,np.float32)
 
 			if len(images_np_.shape)==2:
+				# need to traspose to fit the direction of SITK to numpy
+				images_np_ = images_np_.T
 				if channel == 0:
 					images_np = images_np_[:,:,np.newaxis]
 				else:
@@ -339,26 +341,29 @@ class RandomRotate2D(object):
 	Randomly rotate the input image
 	"""
 
-	def __init__(self):
+	def __init__(self,max_angle):
 		self.name = "Random Rotate 2D"
+		self.max_angle = max_angle
 
 	def __call__(self,sample):
 		images = sample['images']
 
-		transform = sitk.Euler2DTransform()
-		transform.SetMatrix(images[0].GetDirection())
+		# rotate fix degree for all channels
+		ang_degree = random.randint(0,self.max_angle)*1.0
 
-		center = [images[0].GetOrigin()[i] + images[0].GetSpacing()[i]*images[0].GetSize()[i]/2 for i in range(2)] 
+		for image_channel, image in enumerate(images):
+			# for 2d images, the input data are not required to have the same size and direction, thus rotation center need to compute for each channel
+			transform = sitk.Euler2DTransform()
+			transform.SetMatrix(image.GetDirection())
 
-		transform.SetCenter(tuple(center))
-		ang_degree = random.randint(0,180)*1.0
-		transform.SetAngle(ang_degree/180.0*math.pi)
+			center = image.TransformIndexToPhysicalPoint([round(image.GetSize()[0]/2),round(image.GetSize()[1]/2)])
+			transform.SetCenter(tuple(center))
+			transform.SetAngle(ang_degree/180.0*math.pi)
 
-		for image_channel in range(len(images)):
 			resample = sitk.ResampleImageFilter()
-			resample.SetReferenceImage(images[0])
-			resample.SetSize([images[0].GetSize()[0],images[0].GetSize()[1]])
-			resample.SetOutputDirection(images[0].GetDirection())
+			resample.SetReferenceImage(image)
+			resample.SetSize([image.GetSize()[0],image.GetSize()[1]])
+			resample.SetOutputDirection(image.GetDirection())
 			resample.SetInterpolator(sitk.sitkLinear)
 			resample.SetTransform(transform)
 			images[image_channel] = resample.Execute(images[image_channel])
@@ -382,7 +387,7 @@ class RandomRotate3D(object):
 		transform = sitk.Euler3DTransform()
 		transform.SetMatrix(images[0].GetDirection())
 
-		center = [images[0].GetOrigin()[i] + images[0].GetSpacing()[i]*images[0].GetSize()[i]/2 for i in range(3)] 
+		center = images[0].TransformIndexToPhysicalPoint([round(images[0].GetSize()[0]/2),round(images[0].GetSize()[1]/2),round(images[0].GetSize()[2]/2)])
 
 		transform.SetCenter(tuple(center))
 		angX_degree = random.randint(0,self.max_angle_X)*1.0
