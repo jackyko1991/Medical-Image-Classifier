@@ -80,6 +80,7 @@
         - operation: prepare-test-config
         #- file: /mnt/DIIR-JK-NAS/data/carotid/data_kfold/
         - file: /home/jacky/data_disk/data/carotid/data_kfold
+        - file: /mnt/DIIR-JK-NAS/data/carotid/results
         - file: ./pipeline
 
     benchmark:

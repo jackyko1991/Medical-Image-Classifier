@@ -120,6 +120,8 @@ def main(args):
         mean_fpr = np.linspace(0,1,100)
         tpr_interp = []
 
+        weighted_auc = 0
+        weight = 0
         for classname in classnames:
             fpr[classname], tpr[classname], thresholds = metrics.roc_curve(gt[classname], pred[classname])
             interp_tpr = np.interp(mean_fpr, fpr[classname], tpr[classname])
@@ -127,10 +129,16 @@ def main(args):
             tpr_interp.append(interp_tpr)
 
             auc[classname] = metrics.auc(fpr[classname],tpr[classname])
+            weighted_auc += auc[classname]*np.sum(gt[classname].to_numpy())
+            weight += np.sum(gt[classname].to_numpy())
+
             if len(classnames) > 1:
                 ax_roc.plot(fpr[classname],tpr[classname],label="{} (AUC = {:.2f})".format(classname, auc[classname]),alpha=0.3,lw=1)
             else:
                 ax_roc.plot(fpr[classname],tpr[classname],label="AUC = {:.2f}".format(auc[classname]),alpha=0.3,lw=1)
+
+        weighted_auc = weighted_auc/weight
+        auc["weighted"] = weighted_auc
 
         # macro average roc and auc 
         tpr["macro"] = np.mean(tpr_interp,axis=0)
@@ -152,8 +160,9 @@ def main(args):
         # benchmarks: precision, recall, f1, sensitivity (recall of positive class), specificity (recall of negative class)
         if len(classnames) > 1:
             report = metrics.classification_report(y_true,y_pred, target_names=classnames,output_dict=True)
-            #print(metrics.classification_report(y_true,y_pred, target_names=classnames))
-            print("AUC: {}".format(auc["macro"]))
+            print(metrics.classification_report(y_true,y_pred, target_names=classnames))
+            print("micro AUC: {}".format(auc["micro"]))
+            print("macro AUC: {}".format(auc["macro"]))
             print("precision: {}".format(report["macro avg"]["precision"]))
             print("sensitivity: {}".format(report["macro avg"]["recall"]))
             print("fscore: {}".format(report["macro avg"]["f1-score"]))
@@ -164,7 +173,6 @@ def main(args):
             print("precision: {}".format(report["0"]["precision"]))
             print("sensitivity: {}".format(report["1"]["recall"]))
             print("fscore: {}".format(report["1"]["f1-score"]))
-
 
         if len(classnames) > 1:
             output_df = pd.DataFrame(columns= ["class","auc","precision","sensitivity","f1-score"])
@@ -183,11 +191,24 @@ def main(args):
 
             # for multi class macro and micro average are the same, only macro average is reported
             output_df = output_df.append({
+                "class": "micro avg",
+                "auc": auc["micro"],
+            },ignore_index=True)
+
+            output_df = output_df.append({
                 "class": "macro avg", 
                 "auc": auc["macro"], 
                 "precision": report["macro avg"]["precision"],
                 "sensitivity": report["macro avg"]["recall"],
                 "f1-score": report["macro avg"]["f1-score"]
+            },ignore_index=True)
+
+            output_df = output_df.append({
+                "class": "weighted avg", 
+                "auc": auc["weighted"], 
+                "precision": report["weighted avg"]["precision"],
+                "sensitivity": report["weighted avg"]["recall"],
+                "f1-score": report["weighted avg"]["f1-score"]
             },ignore_index=True)
         else:
             output_df = output_df.append({

@@ -68,7 +68,7 @@ class NiftiDataset(object):
 		dataset = dataset.map(lambda case: tuple(tf.py_function(
 			func=self.input_parser, inp=[case], Tout=[tf.float32,tf.int64])),
 			# num_parallel_calls=multiprocessing.cpu_count())
-			num_parallel_calls=4)
+			num_parallel_calls=2)
 		self.dataset = dataset
 		self.data_size = len(data_list)
 		return self.dataset
